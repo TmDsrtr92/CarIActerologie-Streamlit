@@ -5,7 +5,7 @@ Streamlit authentication components and session management
 import streamlit as st
 from typing import Optional, Callable
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from auth.user_manager import get_user_manager, User, UserSession
 from utils.logging_config import get_logger
@@ -54,11 +54,25 @@ class StreamlitAuth:
         if "user_session" not in st.session_state:
             return None
         
-        session_id = st.session_state.user_session.get("session_id")
+        session_data = st.session_state.user_session
+        session_id = session_data.get("session_id")
         if not session_id:
             return None
         
-        # Validate session with user manager
+        # Handle guest sessions (don't validate through user manager)
+        if session_data.get("role") == "guest":
+            # Guest sessions are valid as long as they exist in session state
+            return UserSession(
+                session_id=session_data["session_id"],
+                user_id=session_data["user_id"],
+                username=session_data["username"],
+                role=session_data["role"],
+                created_at=datetime.fromisoformat(session_data["last_activity"]),
+                expires_at=datetime.now() + timedelta(hours=24),  # Guest sessions expire after 24h
+                last_activity=datetime.fromisoformat(session_data["last_activity"])
+            )
+        
+        # Validate regular user session with user manager
         session = self.user_manager.validate_session(session_id)
         
         if not session:
@@ -87,6 +101,19 @@ class StreamlitAuth:
         session = self.get_current_session()
         if not session:
             return None
+        
+        # Handle guest sessions (create a temporary User object)
+        if session.role == "guest":
+            return User(
+                user_id=session.user_id,
+                username=session.username,
+                email="guest@example.com",
+                full_name=session.username,
+                role="guest",
+                created_at=session.created_at,
+                last_login=session.last_activity,
+                is_active=True
+            )
         
         return self.user_manager.get_user_by_id(session.user_id)
     
