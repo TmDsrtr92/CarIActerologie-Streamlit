@@ -1,84 +1,52 @@
-import streamlit as st
+"""
+Legacy settings module - now imports from unified configuration system.
+This module is maintained for backward compatibility.
+"""
 
-# API Configuration
-def get_openai_api_key():
-    """Get OpenAI API key from Streamlit secrets"""
-    return st.secrets["OPENAI_API_KEY"]
+import warnings
+from config.app_config import (
+    get_config,
+    get_openai_api_key,
+    get_langfuse_config, 
+    get_vectorstore_config
+)
 
-def get_langfuse_config():
-    """Get Langfuse configuration from Streamlit secrets"""
-    return {
-        "secret_key": st.secrets["LANGFUSE_SECRET_KEY"],
-        "public_key": st.secrets["LANGFUSE_PUBLIC_KEY"],
-        "host": "https://cloud.langfuse.com"
-    }
+# Issue deprecation warning
+warnings.warn(
+    "config.settings is deprecated. Use config.app_config instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
-# Model Configuration
-LLM_CONFIG = {
-    "model_name": "gpt-4o-mini",
-    "temperature": 0.5,
-    "max_tokens": 1000,
-    "streaming": True
-}
+# Get configuration instance
+_config = get_config()
 
-# Available vectorstore collections
+# Backward compatibility exports
+LLM_CONFIG = _config.llm.to_dict()
 AVAILABLE_COLLECTIONS = {
-    "Sub-chapters (Semantic)": {
-        "collection_name": "traite_subchapters",
-        "description": "Chunks based on document sub-chapters (~336 semantic chunks)",
-        "chunk_type": "semantic"
-    },
-    "Original (Character-based)": {
-        "collection_name": "traite",
-        "description": "Original character-based chunks (~2800 small chunks)",
-        "chunk_type": "character"
+    key: {
+        "collection_name": collection.collection_name,
+        "description": collection.description,
+        "chunk_type": collection.chunk_type
     }
+    for key, collection in _config.vectorstore.collections.items()
 }
-
-# Default collection
-DEFAULT_COLLECTION_KEY = "Sub-chapters (Semantic)"
-
-# Vectorstore Configuration (dynamic)
-def get_vectorstore_config(collection_key: str = None):
-    """Get vectorstore config for specified collection"""
-    if collection_key is None:
-        collection_key = DEFAULT_COLLECTION_KEY
-    
-    if collection_key not in AVAILABLE_COLLECTIONS:
-        collection_key = DEFAULT_COLLECTION_KEY
-    
-    collection_info = AVAILABLE_COLLECTIONS[collection_key]
-    
-    return {
-        "persist_directory": "./index_stores",
-        "collection_name": collection_info["collection_name"],
-        "search_kwargs": {"k": 10},
-        "description": collection_info["description"],
-        "chunk_type": collection_info["chunk_type"]
-    }
-
-# Legacy config for backward compatibility
+DEFAULT_COLLECTION_KEY = _config.vectorstore.default_collection_key
 VECTORSTORE_CONFIG = get_vectorstore_config()
-
-# Streaming Configuration
 STREAMING_CONFIG = {
-    "update_every": 3,
-    "delay": 0.15
+    "update_every": _config.streaming.update_every,
+    "delay": _config.streaming.delay
 }
-
-# Memory Configuration
 MEMORY_CONFIG = {
-    "max_token_limit": 4000,  # Maximum tokens to keep in conversation memory
-    "model_name": "gpt-4o-mini"  # Model to use for token counting
+    "max_token_limit": _config.memory.max_token_limit,
+    "model_name": _config.memory.model_name
 }
-
-# LangGraph Memory Configuration
 LANGGRAPH_MEMORY_CONFIG = {
-    "db_path": "conversations.db",  # SQLite database path for conversation persistence
-    "enable_conversation_persistence": True,  # Enable conversation persistence across sessions
-    "max_conversations": 50,  # Maximum number of conversations to keep
-    "auto_summarize_old_conversations": True,  # Auto-summarize conversations older than threshold
-    "summarize_threshold_days": 30,  # Days after which conversations are candidates for summarization
-    "enable_conversation_branching": False,  # Enable conversation branching (future feature)
-    "enable_semantic_search": False,  # Enable semantic search on conversation history (future feature)
+    "db_path": _config.langgraph.db_path,
+    "enable_conversation_persistence": _config.langgraph.enable_conversation_persistence,
+    "max_conversations": _config.langgraph.max_conversations,
+    "auto_summarize_old_conversations": _config.langgraph.auto_summarize_old_conversations,
+    "summarize_threshold_days": _config.langgraph.summarize_threshold_days,
+    "enable_conversation_branching": _config.langgraph.enable_conversation_branching,
+    "enable_semantic_search": _config.langgraph.enable_semantic_search,
 } 

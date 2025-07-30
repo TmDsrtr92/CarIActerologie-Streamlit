@@ -305,12 +305,15 @@ def setup_langgraph_qa_chain(memory_manager: LangGraphMemoryManager, collection_
 # Backward compatibility function
 def setup_qa_chain_with_memory(memory, collection_key: str = None, prompt_name: str = "caracterologie_qa", prompt_version: int = None):
     """
-    Backward compatibility function that works with both old and new memory systems
+    Setup QA chain with memory - now only supports LangGraph memory system
     """
-    # Check if it's the new LangGraph memory manager
+    # Check if it's the new LangGraph memory manager wrapper
     if hasattr(memory, 'manager') and hasattr(memory.manager, '_is_langgraph_memory'):
         return setup_langgraph_qa_chain(memory.manager, collection_key, prompt_name, prompt_version)
     
-    # Fall back to old implementation if needed
-    from core.qa_chain import setup_qa_chain_with_memory as old_setup
-    return old_setup(memory, collection_key, prompt_name, prompt_version)
+    # Check if it's a direct LangGraph memory manager
+    if hasattr(memory, '_is_langgraph_memory'):
+        return setup_langgraph_qa_chain(memory, collection_key, prompt_name, prompt_version)
+    
+    # If we get here, something is wrong with the memory system
+    raise ValueError(f"Unsupported memory type: {type(memory)}. Only LangGraph memory managers are supported.")

@@ -25,7 +25,8 @@ def render_conversation_sidebar():
         set_current_conversation, 
         create_new_conversation,
         get_current_memory,
-        clear_conversation_memory
+        clear_conversation_memory,
+        reset_session_state
     )
     from config.settings import MEMORY_CONFIG, AVAILABLE_COLLECTIONS, DEFAULT_COLLECTION_KEY
     
@@ -109,6 +110,33 @@ def render_conversation_sidebar():
             clear_conversation_memory()
             st.success("Memory cleared!")
             st.rerun()
+        
+        # Debug section (only in development)
+        from config.app_config import get_config
+        config = get_config()
+        if config.debug:
+            st.divider()
+            st.subheader("🔧 Debug Tools")
+            
+            if st.button("Reset Session State", type="secondary"):
+                reset_session_state()
+                st.success("Session state reset!")
+                st.rerun()
+            
+            # Show session state structure
+            with st.expander("Session State Structure"):
+                if st.checkbox("Show session state"):
+                    st.json({
+                        "conversations": {
+                            name: {
+                                "has_thread_id": "thread_id" in conv if isinstance(conv, dict) else False,
+                                "message_count": len(conv.get("messages", [])) if isinstance(conv, dict) else len(conv) if isinstance(conv, list) else 0,
+                                "type": type(conv).__name__
+                            } for name, conv in st.session_state.get("conversations", {}).items()
+                        },
+                        "current_conversation": st.session_state.get("current_conversation", "None"),
+                        "has_langgraph_manager": "langgraph_manager" in st.session_state
+                    })
         
         # Show recent conversation context
         if chat_history:

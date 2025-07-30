@@ -1,44 +1,24 @@
 """
 Welcome message and templated prompts configuration
+Legacy module - now imports from unified configuration system.
 """
 
-# Welcome message content
-WELCOME_MESSAGE = """👋 **Bienvenue dans CarIActérologie !**
+import warnings
+from config.app_config import get_config
 
-Je suis votre assistant expert en caractérologie, spécialisé dans les travaux de René Le Senne. Je suis là pour vous accompagner dans la découverte de la science des types de caractère.
+# Issue deprecation warning
+warnings.warn(
+    "config.welcome_config is deprecated. Use config.app_config.ui instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
-Que vous soyez novice ou déjà initié, je peux vous aider à :
-- **Comprendre les fondements** de la caractérologie
-- **Explorer votre type de caractère** et ses spécificités  
-- **Approfondir vos connaissances** sur les 8 types caractérologiques
-- **Appliquer ces concepts** dans votre développement personnel
+# Get configuration instance
+_config = get_config()
 
-Pour commencer, vous pouvez choisir une des suggestions ci-dessous ou me poser directement votre question :"""
-
-# Templated prompts for different user types
-TEMPLATED_PROMPTS = [
-    {
-        "id": "beginner",
-        "title": "🌱 Débutant",
-        "prompt": "Qu'est-ce que la caractérologie et comment peut-elle m'aider ?",
-        "description": "Découvrir les bases de la caractérologie",
-        "icon": "🌱"
-    },
-    {
-        "id": "practical", 
-        "title": "🔍 Pratique",
-        "prompt": "Pouvez-vous m'aider à comprendre mon type de caractère ?",
-        "description": "Explorer votre profil caractérologique",
-        "icon": "🔍"
-    },
-    {
-        "id": "advanced",
-        "title": "📚 Avancé", 
-        "prompt": "Expliquez-moi en détail le système typologique de René Le Senne",
-        "description": "Approfondir la théorie caractérologique",
-        "icon": "📚"
-    }
-]
+# Backward compatibility exports
+WELCOME_MESSAGE = _config.ui.welcome_message
+TEMPLATED_PROMPTS = _config.ui.templated_prompts
 
 # Welcome message styling
 WELCOME_STYLE = {
