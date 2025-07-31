@@ -74,10 +74,16 @@ class LangGraphRAGChain:
         """Build the LangGraph workflow for RAG"""
         workflow = StateGraph(RAGState)
         
+        # Create wrapper functions that can access the config
+        def generate_answer_wrapper(state: RAGState):
+            # Access the stored config
+            config = getattr(self, '_current_config', None)
+            return self._generate_answer(state, config)
+        
         # Add nodes
         workflow.add_node("retrieve_context", self._retrieve_context)
         workflow.add_node("contextualize_question", self._contextualize_question)
-        workflow.add_node("generate_answer", self._generate_answer)
+        workflow.add_node("generate_answer", generate_answer_wrapper)
         
         # Add edges
         workflow.add_edge(START, "retrieve_context")
@@ -89,23 +95,23 @@ class LangGraphRAGChain:
     
     def _retrieve_context(self, state: RAGState) -> Dict[str, Any]:
         """Retrieve relevant documents based on the question"""
-        print(f"\n🔍 RECHERCHE DE CHUNKS pour la question: '{state.question}'")
+        print(f"\nRecherche de chunks pour la question: '{state.question}'")
         print("=" * 80)
         
         # Use the original question for retrieval (before contextualization)
         docs = self.retriever.invoke(state.question)
         
-        print(f"📄 {len(docs)} chunks récupérés:")
+        print(f"{len(docs)} chunks recuperes:")
         print("-" * 80)
         for i, doc in enumerate(docs, 1):
-            print(f"\n📄 Chunk {i}:")
+            print(f"\nChunk {i}:")
             if hasattr(doc, 'metadata'):
                 print(f"   Source: {doc.metadata.get('source', 'N/A')}")
                 print(f"   Page: {doc.metadata.get('page', 'N/A')}")
             content = doc.page_content if hasattr(doc, 'page_content') else str(doc)
             print(f"   Contenu: {content[:200]}...")
             if len(content) > 200:
-                print(f"   (tronqué, longueur totale: {len(content)} caractères)")
+                print(f"   (tronque, longueur totale: {len(content)} caracteres)")
             print("-" * 40)
         print("=" * 80)
         
@@ -143,22 +149,22 @@ Question contextualisée:"""
         
         return {"question": contextualized_question}
     
-    def _generate_answer(self, state: RAGState) -> Dict[str, Any]:
+    def _generate_answer(self, state: RAGState, config: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generate answer using retrieved context and chat history"""
         # Display memory content
         if state.chat_history:
-            print(f"\n💬 MÉMOIRE DE CONVERSATION ({len(state.chat_history)} messages):")
+            print(f"\nMemoire de conversation ({len(state.chat_history)} messages):")
             print("=" * 80)
             for i, msg in enumerate(state.chat_history, 1):
-                role = "👤 Utilisateur" if isinstance(msg, HumanMessage) else "🤖 Assistant"
+                role = "Utilisateur" if isinstance(msg, HumanMessage) else "Assistant"
                 print(f"\n{i}. {role}:")
                 print("-" * 40)
                 print(msg.content)
                 print("-" * 40)
-                print(f"📊 Longueur: {len(msg.content)} caractères")
+                print(f"Longueur: {len(msg.content)} caracteres")
             print("=" * 80)
         else:
-            print("\n💬 MÉMOIRE DE CONVERSATION: (vide)")
+            print("\nMemoire de conversation: (vide)")
         
         # Create enhanced prompt template
         enhanced_template = """Tu es un assistant caractérologue expert, à la fois pédagogue et curieux. Ton rôle est de faire découvrir la caractérologie — la science des types de caractère — de manière à la fois précise, vivante et accessible.
@@ -207,14 +213,20 @@ IMPORTANT - Utilise les informations suivantes dans cet ordre de priorité :
             input=state.question
         )
         
-        print(f"\n🤖 PROMPT SYSTÈME UTILISÉ:")
+        print(f"\nPrompt systeme utilise:")
         print("=" * 80)
-        print("✅ Prompt avec historique de conversation intégré")
-        print("✅ Priorité donnée à l'historique pour les références")
+        print("Prompt avec historique de conversation integre")
+        print("Priorite donnee a l'historique pour les references")
         print("=" * 80)
         
-        # Generate response
-        response = self.llm.invoke(final_prompt)
+        # Generate response with streaming support
+        # Use the passed config directly for streaming
+        if config and "callbacks" in config:
+            print("Streaming callbacks detected - using real streaming")
+            response = self.llm.invoke(final_prompt, config=config)
+        else:
+            response = self.llm.invoke(final_prompt)
+            
         answer = response.content
         
         return {"answer": answer}
@@ -242,39 +254,20 @@ IMPORTANT - Utilise les informations suivantes dans cet ordre de priorité :
             chat_history=chat_history
         )
         
-        # Handle streaming if specified in config
-        stream_handler = None
-        if config and "callbacks" in config:
-            for cb in config["callbacks"]:
-                if hasattr(cb, '__class__') and 'StreamlitCallbackHandler' in cb.__class__.__name__:
-                    stream_handler = cb
-                    break
+        # Store config for use in workflow nodes
+        self._current_config = config
         
-        # Run the workflow
-        final_state = self.app.invoke(initial_state)
+        # Run the workflow with config
+        try:
+            if config:
+                final_state = self.app.invoke(initial_state, config=config)
+            else:
+                final_state = self.app.invoke(initial_state)
+        finally:
+            # Clean up stored config
+            self._current_config = None
         
         answer = final_state["answer"]
-        
-        # Handle streaming display
-        if stream_handler:
-            import time
-            words = answer.split()
-            displayed_text = ""
-            
-            for i, word in enumerate(words):
-                displayed_text += word + " "
-                if i % 3 == 0:  # Update every 3 words
-                    try:
-                        stream_handler.placeholder.markdown(displayed_text + "▌")
-                        time.sleep(0.05)
-                    except:
-                        pass
-            
-            # Final update without cursor
-            try:
-                stream_handler.placeholder.markdown(displayed_text.strip())
-            except:
-                pass
         
         # Save context to memory
         self.memory_manager.save_context(

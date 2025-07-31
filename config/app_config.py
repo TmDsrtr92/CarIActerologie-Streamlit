@@ -138,8 +138,8 @@ class LangGraphConfig:
 @dataclass
 class StreamingConfig:
     """Streaming response configuration"""
-    update_every: int = 3
-    delay: float = 0.15
+    update_every: int = 1
+    delay: float = 0.01
 
 
 @dataclass

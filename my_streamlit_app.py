@@ -102,6 +102,9 @@ def main_app():
             assistant_msg = st.chat_message("assistant")
             stream_placeholder = assistant_msg.empty()
             
+            # Show loading indicator immediately
+            stream_placeholder.markdown("_🤔 Réflexion en cours..._")
+            
             # Create streaming handler
             stream_handler = create_stream_handler(stream_placeholder)
             
