@@ -111,6 +111,75 @@ def render_conversation_sidebar():
             st.success("Memory cleared!")
             st.rerun()
         
+        # Circuit breaker status section
+        st.divider()
+        st.subheader("🛡️ Service Status")
+        
+        try:
+            from utils.retry_utils import get_openai_circuit_breaker
+            circuit_breaker = get_openai_circuit_breaker()
+            circuit_state = circuit_breaker.get_state()
+            
+            state = circuit_state["state"]
+            failure_count = circuit_state["failure_count"]
+            success_count = circuit_state["success_count"]
+            remaining_timeout = circuit_state["remaining_timeout"]
+            
+            # Display circuit breaker status
+            if state == "closed":
+                st.success(f"✅ Service disponible")
+                st.write(f"**Succès:** {success_count}")
+            elif state == "open":
+                st.error(f"🔴 Service indisponible")
+                st.write(f"**Échecs consécutifs:** {failure_count}")
+                if remaining_timeout > 0:
+                    st.write(f"**Réessai dans:** {remaining_timeout:.0f}s")
+            elif state == "half_open":
+                st.warning(f"🟡 Test de récupération")
+                st.write(f"**Échecs:** {failure_count}")
+            
+            # Offline mode guidance when service is down
+            if state == "open":
+                st.divider()
+                st.subheader("📚 Mode Dégradé")
+                
+                # Show offline capabilities
+                with st.expander("💡 Que puis-je faire ?", expanded=True):
+                    from utils.fallback_responses import get_fallback_system
+                    fallback_system = get_fallback_system()
+                    guidance = fallback_system.get_offline_guidance()
+                    st.markdown(guidance)
+                
+                # Quick access to common topics
+                st.write("**🔍 Questions fréquentes disponibles :**")
+                if st.button("📖 Qu'est-ce que la caractérologie ?", type="secondary"):
+                    from utils.conversation_manager import set_pending_prompt
+                    set_pending_prompt("Qu'est-ce que la caractérologie ?")
+                    st.rerun()
+                
+                if st.button("📋 Quels sont les 8 types ?", type="secondary"):
+                    from utils.conversation_manager import set_pending_prompt
+                    set_pending_prompt("Quels sont les 8 types caractérologiques ?")
+                    st.rerun()
+                
+                if st.button("🔍 Comment identifier mon type ?", type="secondary"):
+                    from utils.conversation_manager import set_pending_prompt
+                    set_pending_prompt("Comment puis-je identifier mon type de caractère ?")
+                    st.rerun()
+            
+            # Manual reset option for admins (in debug mode)
+            from config.app_config import get_config
+            config = get_config()
+            if config.debug and state == "open":
+                st.divider()
+                if st.button("🔧 Reset Circuit Breaker", type="secondary"):
+                    circuit_breaker.reset()
+                    st.success("Circuit breaker reset!")
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"Circuit breaker status unavailable: {e}")
+        
         # Debug section (only in development)
         from config.app_config import get_config
         config = get_config()

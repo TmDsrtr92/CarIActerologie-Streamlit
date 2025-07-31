@@ -31,20 +31,172 @@ def _get_user_langgraph_manager_key(user_id: Optional[str] = None) -> str:
     else:
         return "langgraph_manager"  # Fallback for guest/unauthenticated users
 
+def validate_session_state() -> bool:
+    """
+    Validate session state structure for corruption
+    
+    Returns:
+        bool: True if session state is valid, False if corrupted
+    """
+    try:
+        user_id = _get_current_user_id()
+        conversations_key = _get_user_conversations_key(user_id)
+        manager_key = _get_user_langgraph_manager_key(user_id)
+        current_conversation_key = f"current_conversation_{user_id or 'guest'}"
+        
+        # Check if conversations exists and is a dict
+        if conversations_key not in st.session_state:
+            return False
+        
+        conversations = st.session_state[conversations_key]
+        if not isinstance(conversations, dict):
+            return False
+        
+        # Validate each conversation structure
+        for name, conv in conversations.items():
+            if not isinstance(conv, dict):
+                return False
+            
+            # Check required keys exist
+            required_keys = ["thread_id", "title", "messages", "welcome_shown"]
+            if not all(key in conv for key in required_keys):
+                return False
+            
+            # Validate data types
+            if not isinstance(conv["messages"], list):
+                return False
+            if not isinstance(conv["welcome_shown"], bool):
+                return False
+            if not isinstance(conv["title"], str):
+                return False
+        
+        # Validate current conversation reference
+        if current_conversation_key in st.session_state:
+            current_conv = st.session_state[current_conversation_key]
+            if current_conv not in conversations:
+                return False
+        
+        return True
+        
+    except Exception as e:
+        # Any exception during validation indicates corruption
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Session state validation failed: {e}")
+        return False
+
+def recover_session_state():
+    """
+    Reset corrupted session state to clean slate
+    """
+    try:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.info("Starting session state recovery")
+        
+        user_id = _get_current_user_id()
+        conversations_key = _get_user_conversations_key(user_id)
+        manager_key = _get_user_langgraph_manager_key(user_id)
+        current_conversation_key = f"current_conversation_{user_id or 'guest'}"
+        
+        # Clear potentially corrupted state
+        keys_to_clear = [conversations_key, manager_key, current_conversation_key]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        # Clear any related session state that might be corrupted
+        additional_keys = ["pending_prompt"]
+        for key in additional_keys:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        logger.info("Session state cleared, reinitializing...")
+        
+        # Force reinitialization will happen in initialize_conversations()
+        return True
+        
+    except Exception as e:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Session state recovery failed: {e}")
+        return False
+
+def _has_any_session_state() -> bool:
+    """Check if any session state exists (not just if it's valid)"""
+    user_id = _get_current_user_id()
+    conversations_key = _get_user_conversations_key(user_id)
+    manager_key = _get_user_langgraph_manager_key(user_id)
+    
+    # Check if any relevant session state exists
+    return any(key in st.session_state for key in [conversations_key, manager_key])
+
+def session_health_check() -> bool:
+    """
+    Run comprehensive health check on session state
+    
+    Returns:
+        bool: True if healthy or successfully recovered, False if critical failure
+    """
+    try:
+        if validate_session_state():
+            return True
+        
+        # Check if this is a new session (no state) vs corrupted session (has partial state)
+        if not _has_any_session_state():
+            # This is a new session - no warning needed
+            return True
+        
+        # Session state exists but is corrupted, attempt recovery
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.warning("Session state corruption detected, attempting recovery")
+        
+        if recover_session_state():
+            # Show user-friendly message about recovery
+            import streamlit as st
+            st.warning("⚠️ Your session data was corrupted and has been reset. You can start fresh!")
+            return True
+        else:
+            # Recovery failed
+            st.error("🔧 Critical session error. Please refresh the page.")
+            return False
+            
+    except Exception as e:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Session health check failed: {e}")
+        import streamlit as st
+        st.error("🔧 Session health check failed. Please refresh the page.")
+        return False
+
 def _migrate_old_session_state():
     """Migrate old session state format to new consolidated structure"""
-    # Get user-specific keys
-    conversations_key = _get_user_conversations_key()
-    manager_key = _get_user_langgraph_manager_key()
-    
-    # Check if we have old format conversations (list-based)
-    if conversations_key in st.session_state:
-        conversations = st.session_state[conversations_key]
+    try:
+        # Get user-specific keys
+        conversations_key = _get_user_conversations_key()
+        manager_key = _get_user_langgraph_manager_key()
         
-        # If any conversation is still a list, migrate to new format
-        needs_migration = any(isinstance(conv, list) for conv in conversations.values())
+        # Initialize migration flag
+        needs_migration = False
+        conversations = None
         
-        if needs_migration:
+        # Check if we have old format conversations (list-based)
+        if conversations_key in st.session_state:
+            conversations = st.session_state[conversations_key]
+            
+            # Defensive check: ensure conversations is a dict
+            if not isinstance(conversations, dict):
+                from utils.logging_config import get_logger
+                logger = get_logger(__name__)
+                logger.warning(f"Conversations data is not a dict (type: {type(conversations)}), clearing corrupted state")
+                del st.session_state[conversations_key]
+                return
+            
+            # If any conversation is still a list, migrate to new format
+            needs_migration = any(isinstance(conv, list) for conv in conversations.values())
+        
+        if needs_migration and conversations is not None:
             manager = st.session_state[manager_key]
             new_conversations = {}
             
@@ -75,10 +227,27 @@ def _migrate_old_session_state():
                         del st.session_state[user_specific_key]
                 if old_key in st.session_state:
                     del st.session_state[old_key]
+                        
+    except Exception as e:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Migration failed: {e}")
+        # If migration fails, clear potentially corrupted state and let initialization start fresh
+        try:
+            conversations_key = _get_user_conversations_key()
+            if conversations_key in st.session_state:
+                del st.session_state[conversations_key]
+        except:
+            pass  # Ignore cleanup errors
 
 
 def initialize_conversations():
     """Initialize simplified conversation state with consolidated structure (user-isolated)"""
+    # Run session health check first - this will handle any corruption
+    if not session_health_check():
+        # Critical failure, can't continue safely
+        return
+    
     # Get user-specific keys
     conversations_key = _get_user_conversations_key()
     manager_key = _get_user_langgraph_manager_key()
@@ -397,4 +566,96 @@ def reset_session_state():
             del st.session_state[key]
     
     # Re-initialize with clean state
-    initialize_conversations() 
+    initialize_conversations()
+
+
+# Atomic Session State Operations
+def safe_update_conversation(conversation_name: str, updates: dict) -> bool:
+    """
+    Atomically update conversation data with rollback on failure
+    
+    Args:
+        conversation_name: Name of conversation to update
+        updates: Dictionary of updates to apply
+        
+    Returns:
+        bool: True if update successful, False otherwise
+    """
+    try:
+        conversations_key = _get_user_conversations_key()
+        
+        if conversations_key not in st.session_state:
+            return False
+        
+        if conversation_name not in st.session_state[conversations_key]:
+            return False
+        
+        # Create backup of current state
+        current_conversations = st.session_state[conversations_key].copy()
+        current_conversation = current_conversations[conversation_name].copy()
+        
+        # Apply updates
+        current_conversation.update(updates)
+        current_conversations[conversation_name] = current_conversation
+        
+        # Atomic update
+        st.session_state[conversations_key] = current_conversations
+        
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.debug(f"Successfully updated conversation '{conversation_name}' with keys: {list(updates.keys())}")
+        
+        return True
+        
+    except Exception as e:
+        # Log error but don't crash
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Failed to update conversation '{conversation_name}': {e}")
+        return False
+
+
+def safe_add_message(conversation_name: str, role: str, content: str) -> bool:
+    """
+    Safely add a message to a conversation with validation
+    
+    Args:
+        conversation_name: Name of conversation
+        role: Message role (user/assistant)
+        content: Message content
+        
+    Returns:
+        bool: True if message added successfully
+    """
+    try:
+        conversations_key = _get_user_conversations_key()
+        
+        if conversations_key not in st.session_state:
+            return False
+        
+        if conversation_name not in st.session_state[conversations_key]:
+            return False
+        
+        # Validate message
+        if not role or not content:
+            return False
+        
+        if role not in ['user', 'assistant']:
+            return False
+        
+        # Get current messages
+        conversation = st.session_state[conversations_key][conversation_name]
+        current_messages = conversation.get("messages", [])
+        
+        # Add new message
+        new_message = {"role": role, "content": content}
+        updated_messages = current_messages + [new_message]
+        
+        # Use atomic update
+        return safe_update_conversation(conversation_name, {"messages": updated_messages})
+        
+    except Exception as e:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Failed to add message to '{conversation_name}': {e}")
+        return False 
