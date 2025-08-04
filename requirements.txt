@@ -6,6 +6,6 @@ langchain-openai
 langchain-community
 langgraph>=0.2.0
 tiktoken
-chromadb
+faiss-cpu
 PyPDF2
 langfuse
