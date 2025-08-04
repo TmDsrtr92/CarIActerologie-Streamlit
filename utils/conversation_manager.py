@@ -252,6 +252,7 @@ def initialize_conversations():
     conversations_key = _get_user_conversations_key()
     manager_key = _get_user_langgraph_manager_key()
     current_conversation_key = f"current_conversation_{_get_current_user_id() or 'guest'}"
+    user_id = _get_current_user_id()
     
     if manager_key not in st.session_state:
         # Create user-specific LangGraph manager
@@ -261,22 +262,43 @@ def initialize_conversations():
     _migrate_old_session_state()
     
     if conversations_key not in st.session_state:
-        # Simplified conversation structure
-        manager = st.session_state[manager_key]
-        thread_id = manager.create_conversation("Conversation 1")
+        # Try to load conversations from database for authenticated users
+        loaded_conversations = {}
+        if user_id and user_id != "guest" and not user_id.startswith("guest_"):
+            try:
+                from auth.user_manager import get_user_manager
+                user_manager = get_user_manager()
+                loaded_conversations = user_manager.load_user_conversations(user_id)
+            except Exception as e:
+                from utils.logging_config import get_logger
+                logger = get_logger(__name__)
+                logger.error(f"Failed to load conversations from database: {e}")
         
-        st.session_state[conversations_key] = {
-            "conversation 1": {
-                "thread_id": thread_id,
-                "title": "Conversation 1",
-                "messages": [],
-                "welcome_shown": False,
-                "memory_manager": create_memory_manager()
+        if loaded_conversations:
+            # Load conversations from database and add memory managers
+            for conv_name, conv_data in loaded_conversations.items():
+                conv_data["memory_manager"] = create_memory_manager()
+            st.session_state[conversations_key] = loaded_conversations
+        else:
+            # Create default conversation structure
+            manager = st.session_state[manager_key]
+            thread_id = manager.create_conversation("Conversation 1")
+            
+            st.session_state[conversations_key] = {
+                "conversation 1": {
+                    "conversation_id": str(__import__('uuid').uuid4()),
+                    "thread_id": thread_id,
+                    "title": "Conversation 1",
+                    "messages": [],
+                    "welcome_shown": False,
+                    "memory_manager": create_memory_manager()
+                }
             }
-        }
         
     if current_conversation_key not in st.session_state:
-        st.session_state[current_conversation_key] = "conversation 1"
+        # Set to first available conversation
+        available_conversations = list(st.session_state[conversations_key].keys())
+        st.session_state[current_conversation_key] = available_conversations[0] if available_conversations else "conversation 1"
         
     if "pending_prompt" not in st.session_state:
         # Store prompt from welcome buttons to process (shared across users for simplicity)
@@ -366,6 +388,9 @@ def add_message(role, content):
     messages = get_current_messages()
     messages.append({"role": role, "content": content})
     
+    # Auto-save to database for authenticated users
+    _auto_save_conversation()
+    
     # Note: Memory is automatically managed by the LangGraph QA chain
     # No need to manually add to memory here
 
@@ -388,6 +413,7 @@ def create_new_conversation():
         st.session_state[conversations_key] = {}
     
     st.session_state[conversations_key][new_name] = {
+        "conversation_id": str(__import__('uuid').uuid4()),
         "thread_id": thread_id,
         "title": title,
         "messages": [],
@@ -398,6 +424,9 @@ def create_new_conversation():
     # Set as current conversation
     st.session_state[current_conversation_key] = new_name
     manager.set_current_thread(thread_id)
+    
+    # Auto-save to database
+    _auto_save_conversation(new_name)
     
     return new_name
 
@@ -432,6 +461,9 @@ def clear_conversation_memory(conversation_name=None):
     # Restore original thread if different
     if original_thread and original_thread != thread_id:
         manager.set_current_thread(original_thread)
+    
+    # Auto-save to database
+    _auto_save_conversation(conversation_name)
 
 
 def get_conversation_summary(conversation_name=None):
@@ -464,6 +496,7 @@ def delete_conversation(conversation_name):
     conversations_key = _get_user_conversations_key()
     manager_key = _get_user_langgraph_manager_key()
     current_conversation_key = f"current_conversation_{_get_current_user_id() or 'guest'}"
+    user_id = _get_current_user_id()
     
     if conversation_name == "conversation 1":
         # Don't delete the first conversation, just clear it
@@ -473,8 +506,23 @@ def delete_conversation(conversation_name):
     if conversation_name not in st.session_state.get(conversations_key, {}):
         return  # Invalid conversation name
     
+    conversation = st.session_state[conversations_key][conversation_name]
+    
+    # Delete from database for authenticated users
+    if user_id and user_id != "guest" and not user_id.startswith("guest_"):
+        try:
+            from auth.user_manager import get_user_manager
+            user_manager = get_user_manager()
+            conversation_id = conversation.get("conversation_id")
+            if conversation_id:
+                user_manager.delete_conversation(user_id, conversation_id)
+        except Exception as e:
+            from utils.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"Failed to delete conversation from database: {e}")
+    
     # Delete LangGraph thread
-    thread_id = st.session_state[conversations_key][conversation_name]["thread_id"]
+    thread_id = conversation["thread_id"]
     manager = st.session_state[manager_key]
     manager.delete_conversation(thread_id)
     
@@ -513,6 +561,8 @@ def mark_welcome_shown(conversation_name=None):
     
     if conversation_name in st.session_state.get(conversations_key, {}):
         st.session_state[conversations_key][conversation_name]["welcome_shown"] = True
+        # Auto-save to database
+        _auto_save_conversation(conversation_name)
 
 
 def set_pending_prompt(prompt_text):
@@ -567,6 +617,53 @@ def reset_session_state():
     
     # Re-initialize with clean state
     initialize_conversations()
+
+
+def _auto_save_conversation(conversation_name=None):
+    """Auto-save current conversation to database for authenticated users"""
+    user_id = _get_current_user_id()
+    
+    # Only save for authenticated users (not guests)
+    if not user_id or user_id == "guest" or user_id.startswith("guest_"):
+        return
+    
+    try:
+        from auth.user_manager import get_user_manager
+        from utils.logging_config import get_logger
+        
+        if conversation_name is None:
+            conversation_name = get_current_conversation()
+        
+        conversations_key = _get_user_conversations_key()
+        conversations = st.session_state.get(conversations_key, {})
+        
+        if conversation_name not in conversations:
+            return
+        
+        conversation = conversations[conversation_name]
+        
+        # Ensure conversation has an ID
+        if "conversation_id" not in conversation:
+            conversation["conversation_id"] = str(__import__('uuid').uuid4())
+        
+        user_manager = get_user_manager()
+        success = user_manager.save_conversation(
+            user_id=user_id,
+            conversation_id=conversation["conversation_id"],
+            title=conversation.get("title", conversation_name),
+            thread_id=conversation["thread_id"],
+            messages=conversation.get("messages", []),
+            welcome_shown=conversation.get("welcome_shown", False)
+        )
+        
+        if success:
+            logger = get_logger(__name__)
+            logger.debug(f"Auto-saved conversation {conversation_name} for user {user_id}")
+    
+    except Exception as e:
+        from utils.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"Failed to auto-save conversation: {e}")
 
 
 # Atomic Session State Operations

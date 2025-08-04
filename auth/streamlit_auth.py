@@ -5,6 +5,8 @@ Streamlit authentication components and session management
 import streamlit as st
 from typing import Optional, Callable
 import time
+import json
+import base64
 from datetime import datetime, timedelta
 
 from auth.user_manager import get_user_manager, User, UserSession
@@ -21,6 +23,7 @@ class StreamlitAuth:
         self.user_manager = get_user_manager()
         self.logger = get_logger(__name__)
         self.config = get_config()
+        self.cookie_name = "streamlit_session_id"
     
     def require_authentication(self, page_func: Callable):
         """
@@ -45,13 +48,33 @@ class StreamlitAuth:
     
     def get_current_session(self) -> Optional[UserSession]:
         """
-        Get current user session from Streamlit session state
+        Get current user session from Streamlit session state or stored session
         
         Returns:
             UserSession if valid, None otherwise
         """
         # Check if session exists in session state
         if "user_session" not in st.session_state:
+            # Try to restore from stored session (localStorage)
+            stored_session_id = self._get_stored_session()
+            if stored_session_id:
+                # Validate the stored session with the database
+                session = self.user_manager.validate_session(stored_session_id)
+                if session:
+                    # Restore session to session state
+                    st.session_state.user_session = {
+                        "session_id": session.session_id,
+                        "user_id": session.user_id,
+                        "username": session.username,
+                        "role": session.role,
+                        "last_activity": session.last_activity.isoformat()
+                    }
+                    self.logger.info(f"Session restored from storage for user: {session.username}")
+                    return session
+                else:
+                    # Stored session is invalid, clear it
+                    self._clear_stored_session()
+            
             return None
         
         session_data = st.session_state.user_session
@@ -117,13 +140,14 @@ class StreamlitAuth:
         
         return self.user_manager.get_user_by_id(session.user_id)
     
-    def login(self, username: str, password: str) -> bool:
+    def login(self, username: str, password: str, remember_me: bool = False) -> bool:
         """
         Authenticate user and create session
         
         Args:
             username: Username or email
             password: Password
+            remember_me: If True, create extended session (30 days)
             
         Returns:
             True if successful, False otherwise
@@ -134,8 +158,8 @@ class StreamlitAuth:
             if not user:
                 return False
             
-            # Create session
-            session = self.user_manager.create_session(user)
+            # Create session with remember me option
+            session = self.user_manager.create_session(user, remember_me)
             
             # Store session in Streamlit session state
             st.session_state.user_session = {
@@ -146,7 +170,11 @@ class StreamlitAuth:
                 "last_activity": session.last_activity.isoformat()
             }
             
-            self.logger.info(f"User logged in: {username}")
+            # Store session locally for persistence if remember me is enabled
+            if remember_me:
+                self._store_session_locally(session.session_id, remember_me)
+            
+            self.logger.info(f"User logged in: {username} (remember_me: {remember_me})")
             return True
             
         except Exception as e:
@@ -168,6 +196,9 @@ class StreamlitAuth:
                 
                 self.clear_session()
             
+            # Clear stored session from browser localStorage
+            self._clear_stored_session()
+            
             self.logger.info("User logged out")
             return True
             
@@ -177,12 +208,31 @@ class StreamlitAuth:
     
     def clear_session(self):
         """Clear session data from Streamlit session state"""
-        keys_to_clear = [
-            "user_session", "conversations", "current_conversation", 
-            "langgraph_manager", "pending_prompt"
-        ]
+        # Get user ID before clearing session
+        user_id = None
+        if "user_session" in st.session_state:
+            user_session = st.session_state.user_session
+            if isinstance(user_session, dict):
+                user_id = user_session.get("user_id")
         
-        for key in keys_to_clear:
+        # Always clear these keys
+        generic_keys_to_clear = ["user_session", "pending_prompt"]
+        
+        # Clear user-specific keys if we have a user ID
+        user_specific_keys = []
+        if user_id:
+            user_specific_keys = [
+                f"conversations_{user_id}",
+                f"current_conversation_{user_id}",
+                f"langgraph_manager_{user_id}"
+            ]
+        
+        # Also clear generic fallback keys (for guests or old sessions)
+        fallback_keys = ["conversations", "current_conversation", "langgraph_manager"]
+        
+        all_keys = generic_keys_to_clear + user_specific_keys + fallback_keys
+        
+        for key in all_keys:
             if key in st.session_state:
                 del st.session_state[key]
     
@@ -284,7 +334,7 @@ class StreamlitAuth:
                     st.error("Please enter both username and password")
                 else:
                     with st.spinner("Authenticating..."):
-                        if self.login(username, password):
+                        if self.login(username, password, False):  # Always False for remember_me
                             st.success("✅ Login successful!")
                             time.sleep(1)  # Brief pause for user feedback
                             st.rerun()
@@ -346,6 +396,125 @@ class StreamlitAuth:
         }
         
         self.logger.info(f"Guest session created: {guest_id}")
+    
+    def _store_session_locally(self, session_id: str, remember_me: bool = False):
+        """Store session ID in browser localStorage"""
+        try:
+            # Calculate expiration timestamp
+            from datetime import datetime, timedelta
+            if remember_me:
+                expires = datetime.now() + timedelta(days=30)
+            else:
+                expires = datetime.now() + timedelta(hours=24)
+            
+            expires_timestamp = int(expires.timestamp() * 1000)  # JavaScript uses milliseconds
+            
+            storage_script = f"""
+            <script>
+                try {{
+                    const sessionData = {{
+                        sessionId: "{session_id}",
+                        expiresAt: {expires_timestamp},
+                        rememberMe: {str(remember_me).lower()}
+                    }};
+                    localStorage.setItem("{self.cookie_name}", JSON.stringify(sessionData));
+                    console.log("Session stored locally with expiration:", new Date({expires_timestamp}));
+                }} catch (e) {{
+                    console.error("Failed to store session locally:", e);
+                }}
+            </script>
+            """
+            st.components.v1.html(storage_script, height=0)
+            self.logger.debug(f"Session stored locally for session {session_id[:8]}...")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to store session locally: {e}")
+    
+    def _get_stored_session(self) -> Optional[str]:
+        """Get session ID from browser localStorage"""
+        try:
+            # Use a unique key to store/retrieve session data
+            storage_key = f"stored_session_{hash(st.get_option('server.address') or 'localhost')}"
+            
+            if storage_key not in st.session_state:
+                # Create a component to read from localStorage
+                retrieval_script = f"""
+                <script>
+                    try {{
+                        const storedData = localStorage.getItem("{self.cookie_name}");
+                        if (storedData) {{
+                            const sessionData = JSON.parse(storedData);
+                            const now = Date.now();
+                            
+                            if (sessionData.expiresAt && now < sessionData.expiresAt) {{
+                                // Session is still valid
+                                console.log("Valid session found in localStorage");
+                                
+                                // Create a form to send data back to Streamlit
+                                const form = document.createElement('form');
+                                form.style.display = 'none';
+                                form.method = 'POST';
+                                form.action = window.location.href;
+                                
+                                const input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = 'stored_session_id';
+                                input.value = sessionData.sessionId;
+                                form.appendChild(input);
+                                
+                                document.body.appendChild(form);
+                                
+                                // Try URL-based communication instead
+                                const url = new URL(window.location);
+                                url.searchParams.set('session_restore', sessionData.sessionId);
+                                if (window.location.href !== url.href) {{
+                                    window.location.href = url.href;
+                                }}
+                            }} else {{
+                                console.log("Stored session expired, clearing...");
+                                localStorage.removeItem("{self.cookie_name}");
+                            }}
+                        }}
+                    }} catch (e) {{
+                        console.error("Failed to retrieve stored session:", e);
+                    }}
+                </script>
+                """
+                st.components.v1.html(retrieval_script, height=0)
+                st.session_state[storage_key] = True
+            
+            # Check URL parameters for session restoration
+            query_params = st.query_params
+            if "session_restore" in query_params:
+                session_id = query_params["session_restore"]
+                # Clear the parameter to clean up URL
+                st.query_params.clear()
+                return session_id
+                
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get stored session: {e}")
+            return None
+    
+    def _clear_stored_session(self):
+        """Clear stored session from browser localStorage"""
+        try:
+            clear_script = f"""
+            <script>
+                try {{
+                    localStorage.removeItem("{self.cookie_name}");
+                    console.log("Stored session cleared");
+                }} catch (e) {{
+                    console.error("Failed to clear stored session:", e);
+                }}
+            </script>
+            """
+            st.components.v1.html(clear_script, height=0)
+            self.logger.debug("Stored session cleared")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to clear stored session: {e}")
     
     def render_user_menu(self):
         """Render user menu in sidebar"""

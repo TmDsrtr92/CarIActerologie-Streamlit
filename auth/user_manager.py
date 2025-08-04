@@ -39,6 +39,7 @@ class UserSession:
     created_at: datetime
     expires_at: datetime
     last_activity: datetime
+    remember_me: bool = False
 
 
 class UserManager:
@@ -90,6 +91,7 @@ class UserManager:
                 expires_at TEXT NOT NULL,
                 last_activity TEXT NOT NULL,
                 is_active BOOLEAN DEFAULT 1,
+                remember_me BOOLEAN DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         """)
@@ -106,10 +108,57 @@ class UserManager:
             )
         """)
         
+        # Conversations table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_conversations (
+                conversation_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                thread_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                welcome_shown BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        """)
+        
+        # Conversation messages table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                message_id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES user_conversations (conversation_id)
+            )
+        """)
+        
+        conn.commit()
+        
+        # Run database migrations
+        self._run_migrations(cursor)
+        
         conn.commit()
         conn.close()
         
         self.logger.info("User database initialized")
+    
+    def _run_migrations(self, cursor):
+        """Run database schema migrations"""
+        try:
+            # Check if remember_me column exists in user_sessions table
+            cursor.execute("PRAGMA table_info(user_sessions)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'remember_me' not in columns:
+                self.logger.info("Adding remember_me column to user_sessions table")
+                cursor.execute("ALTER TABLE user_sessions ADD COLUMN remember_me BOOLEAN DEFAULT 0")
+                self.logger.info("Migration completed: remember_me column added")
+        
+        except Exception as e:
+            self.logger.error(f"Error during migration: {e}")
     
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt"""
@@ -250,19 +299,25 @@ class UserManager:
             self.logger.error(f"Error authenticating user: {e}")
             return None
     
-    def create_session(self, user: User) -> UserSession:
+    def create_session(self, user: User, remember_me: bool = False) -> UserSession:
         """
         Create a new user session
         
         Args:
             user: Authenticated user
+            remember_me: If True, create extended session (30 days vs 24 hours)
             
         Returns:
             UserSession object
         """
         session_id = str(uuid.uuid4())
         now = datetime.now()
-        expires_at = now + timedelta(hours=self.session_timeout_hours)
+        
+        # Extended session for remember me (30 days vs 24 hours)
+        if remember_me:
+            expires_at = now + timedelta(days=30)
+        else:
+            expires_at = now + timedelta(hours=self.session_timeout_hours)
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -270,10 +325,10 @@ class UserManager:
             
             cursor.execute("""
                 INSERT INTO user_sessions (session_id, user_id, created_at, 
-                                         expires_at, last_activity, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
+                                         expires_at, last_activity, is_active, remember_me)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (session_id, user.user_id, now.isoformat(), 
-                  expires_at.isoformat(), now.isoformat(), True))
+                  expires_at.isoformat(), now.isoformat(), True, remember_me))
             
             conn.commit()
             conn.close()
@@ -285,7 +340,8 @@ class UserManager:
                 role=user.role,
                 created_at=now,
                 expires_at=expires_at,
-                last_activity=now
+                last_activity=now,
+                remember_me=remember_me
             )
             
             self.logger.info(f"Session created for user: {user.username}")
@@ -311,7 +367,7 @@ class UserManager:
             
             cursor.execute("""
                 SELECT s.session_id, s.user_id, u.username, u.role, 
-                       s.created_at, s.expires_at, s.last_activity
+                       s.created_at, s.expires_at, s.last_activity, s.remember_me
                 FROM user_sessions s
                 JOIN users u ON s.user_id = u.user_id
                 WHERE s.session_id = ? AND s.is_active = 1 AND u.is_active = 1
@@ -349,7 +405,8 @@ class UserManager:
                 role=row[3],
                 created_at=datetime.fromisoformat(row[4]),
                 expires_at=expires_at,
-                last_activity=now
+                last_activity=now,
+                remember_me=bool(row[7]) if len(row) > 7 else False
             )
             
             return session
@@ -497,6 +554,167 @@ class UserManager:
             
         except Exception as e:
             self.logger.error(f"Error cleaning up sessions: {e}")
+    
+    def save_conversation(self, user_id: str, conversation_id: str, title: str, 
+                         thread_id: str, messages: List[dict], welcome_shown: bool = False) -> bool:
+        """
+        Save or update a user's conversation to database
+        
+        Args:
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            title: Conversation title
+            thread_id: LangGraph thread ID
+            messages: List of conversation messages
+            welcome_shown: Whether welcome message was shown
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            now = datetime.now().isoformat()
+            
+            # Insert or update conversation
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_conversations 
+                (conversation_id, user_id, title, thread_id, created_at, updated_at, is_active, welcome_shown)
+                VALUES (?, ?, ?, ?, 
+                    COALESCE((SELECT created_at FROM user_conversations WHERE conversation_id = ?), ?),
+                    ?, 1, ?)
+            """, (conversation_id, user_id, title, thread_id, conversation_id, now, now, welcome_shown))
+            
+            # Clear existing messages for this conversation
+            cursor.execute("""
+                DELETE FROM conversation_messages WHERE conversation_id = ?
+            """, (conversation_id,))
+            
+            # Insert messages
+            for message in messages:
+                message_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO conversation_messages (message_id, conversation_id, role, content, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (message_id, conversation_id, message['role'], message['content'], now))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.debug(f"Saved conversation {conversation_id} for user {user_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error saving conversation: {e}")
+            return False
+    
+    def load_user_conversations(self, user_id: str) -> Dict:
+        """
+        Load all conversations for a user from database
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            Dictionary of conversations in session state format
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get conversations
+            cursor.execute("""
+                SELECT conversation_id, title, thread_id, welcome_shown, created_at
+                FROM user_conversations 
+                WHERE user_id = ? AND is_active = 1
+                ORDER BY created_at DESC
+            """, (user_id,))
+            
+            conversations_data = cursor.fetchall()
+            conversations = {}
+            
+            for conv_data in conversations_data:
+                conversation_id, title, thread_id, welcome_shown, created_at = conv_data
+                
+                # Get messages for this conversation
+                cursor.execute("""
+                    SELECT role, content FROM conversation_messages 
+                    WHERE conversation_id = ? 
+                    ORDER BY created_at ASC
+                """, (conversation_id,))
+                
+                messages = []
+                for msg_row in cursor.fetchall():
+                    messages.append({"role": msg_row[0], "content": msg_row[1]})
+                
+                # Use a more readable key format
+                conv_key = f"conversation {len(conversations) + 1}"
+                conversations[conv_key] = {
+                    "conversation_id": conversation_id,
+                    "thread_id": thread_id,
+                    "title": title,
+                    "messages": messages,
+                    "welcome_shown": bool(welcome_shown)
+                }
+            
+            conn.close()
+            
+            # If no conversations found, return empty dict (will trigger creation of default conversation)
+            if not conversations:
+                return {}
+            
+            self.logger.debug(f"Loaded {len(conversations)} conversations for user {user_id}")
+            return conversations
+            
+        except Exception as e:
+            self.logger.error(f"Error loading conversations for user {user_id}: {e}")
+            return {}
+    
+    def delete_conversation(self, user_id: str, conversation_id: str) -> bool:
+        """
+        Delete a user's conversation from database
+        
+        Args:
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Verify conversation belongs to user
+            cursor.execute("""
+                SELECT conversation_id FROM user_conversations 
+                WHERE conversation_id = ? AND user_id = ?
+            """, (conversation_id, user_id))
+            
+            if not cursor.fetchone():
+                self.logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
+                return False
+            
+            # Delete messages first (cascade)
+            cursor.execute("""
+                DELETE FROM conversation_messages WHERE conversation_id = ?
+            """, (conversation_id,))
+            
+            # Delete conversation
+            cursor.execute("""
+                UPDATE user_conversations SET is_active = 0 WHERE conversation_id = ?
+            """, (conversation_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.info(f"Deleted conversation {conversation_id} for user {user_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting conversation: {e}")
+            return False
 
 
 # Global user manager instance
