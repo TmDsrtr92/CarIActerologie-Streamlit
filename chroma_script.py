@@ -1,5 +1,5 @@
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
 from datetime import datetime
@@ -24,21 +24,24 @@ chunks = text_splitter.split_text(full_text)
 # Créer les embeddings OpenAI
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-# Créer un nom de collection unique avec timestamp
+# Créer un nom d'index FAISS unique avec timestamp
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-collection_name = f"traite_{timestamp}"
+index_name = f"traite_{timestamp}_faiss"
 
-# Créer la base Chroma avec les bons embeddings
-vectorstore = Chroma.from_texts(
+# Créer la base FAISS avec les bons embeddings
+vectorstore = FAISS.from_texts(
     chunks,
-    embedding=embeddings,
-    persist_directory="./index_stores",
-    collection_name=collection_name
+    embedding=embeddings
 )
-vectorstore.persist()
 
-print(f"Indexation terminée. {len(chunks)} chunks indexés dans ./index_stores (collection '{collection_name}').")
-print(f"Pour utiliser cette collection, modifiez config/settings.py avec: 'collection_name': '{collection_name}'")
+# Sauvegarder l'index FAISS
+persist_directory = "./index_stores"
+os.makedirs(persist_directory, exist_ok=True)
+faiss_path = os.path.join(persist_directory, index_name)
+vectorstore.save_local(faiss_path)
+
+print(f"Indexation terminée. {len(chunks)} chunks indexés dans {faiss_path}.")
+print(f"Pour utiliser cet index, modifiez config/settings.py avec: 'collection_name': '{index_name}'")
 
 
 

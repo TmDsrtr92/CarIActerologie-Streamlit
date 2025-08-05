@@ -84,13 +84,13 @@ class VectorStoreConfig:
     # Available collections
     collections: Dict[str, VectorStoreCollection] = field(default_factory=lambda: {
         "Sub-chapters (Semantic)": VectorStoreCollection(
-            collection_name="traite_subchapters",
-            description="Chunks based on document sub-chapters (~336 semantic chunks)",
+            collection_name="traite_subchapters_faiss",
+            description="FAISS chunks based on document sub-chapters (~336 semantic chunks)",
             chunk_type="semantic"
         ),
         "Original (Character-based)": VectorStoreCollection(
-            collection_name="traite",
-            description="Original character-based chunks (~2800 small chunks)",
+            collection_name="traite_faiss",
+            description="FAISS character-based chunks (~2800 small chunks)",
             chunk_type="character"
         )
     })

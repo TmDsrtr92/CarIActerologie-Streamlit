@@ -1,5 +1,5 @@
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.schema import Document
 import os
@@ -10,7 +10,7 @@ from typing import List, Tuple
 # Configuration
 PDF_PATH = "documents/traite_caracterologie.pdf"
 PERSIST_DIRECTORY = "./index_stores"
-COLLECTION_NAME = "traite_subchapters"
+FAISS_INDEX_NAME = "traite_subchapters_faiss"
 
 # Chunking parameters
 MIN_CHUNK_SIZE = 500  # Merge chunks smaller than this
@@ -247,24 +247,21 @@ def load_and_chunk_pdf() -> List[Document]:
     return optimized_documents
 
 def create_vectorstore(documents: List[Document]):
-    """Create new ChromaDB collection with sub-chapter chunks"""
+    """Create new FAISS vectorstore with sub-chapter chunks"""
     print(f"Creating embeddings for {len(documents)} documents...")
     
     # Setup embeddings
     api_key = get_openai_api_key()
     embeddings = OpenAIEmbeddings(openai_api_key=api_key)
     
-    # Create empty vectorstore first
-    print(f"Creating Chroma vectorstore with collection '{COLLECTION_NAME}'...")
-    vectorstore = Chroma(
-        persist_directory=PERSIST_DIRECTORY,
-        collection_name=COLLECTION_NAME,
-        embedding_function=embeddings
-    )
+    # Create FAISS vectorstore from documents
+    print(f"Creating FAISS vectorstore '{FAISS_INDEX_NAME}'...")
     
     # Process documents in batches to avoid token limits
     batch_size = 20  # Process 20 documents at a time
     total_batches = (len(documents) + batch_size - 1) // batch_size
+    
+    vectorstore = None
     
     for i in range(0, len(documents), batch_size):
         batch_num = (i // batch_size) + 1
@@ -273,11 +270,14 @@ def create_vectorstore(documents: List[Document]):
         print(f"Processing batch {batch_num}/{total_batches} ({len(batch)} documents)...")
         
         try:
-            # Add batch to vectorstore
-            texts = [doc.page_content for doc in batch]
-            metadatas = [doc.metadata for doc in batch]
-            
-            vectorstore.add_texts(texts=texts, metadatas=metadatas)
+            if vectorstore is None:
+                # Create initial vectorstore with first batch
+                vectorstore = FAISS.from_documents(batch, embeddings)
+            else:
+                # Add documents to existing vectorstore
+                batch_texts = [doc.page_content for doc in batch]
+                batch_metadatas = [doc.metadata for doc in batch]
+                vectorstore.add_texts(texts=batch_texts, metadatas=batch_metadatas)
             
         except Exception as e:
             print(f"Error processing batch {batch_num}: {e}")
@@ -286,16 +286,22 @@ def create_vectorstore(documents: List[Document]):
                 print(f"Retrying with smaller chunks...")
                 for doc in batch:
                     try:
-                        vectorstore.add_texts(
-                            texts=[doc.page_content], 
-                            metadatas=[doc.metadata]
-                        )
+                        if vectorstore is None:
+                            vectorstore = FAISS.from_documents([doc], embeddings)
+                        else:
+                            vectorstore.add_texts(
+                                texts=[doc.page_content], 
+                                metadatas=[doc.metadata]
+                            )
                     except Exception as e2:
                         print(f"Failed to add document: {e2}")
                         print(f"Document size: {len(doc.page_content)} chars")
     
-    vectorstore.persist()
-    print(f"Vectorstore created and persisted to {PERSIST_DIRECTORY}")
+    # Save FAISS index
+    faiss_path = os.path.join(PERSIST_DIRECTORY, FAISS_INDEX_NAME)
+    os.makedirs(PERSIST_DIRECTORY, exist_ok=True)
+    vectorstore.save_local(faiss_path)
+    print(f"FAISS vectorstore saved to {faiss_path}")
     
     return vectorstore
 
@@ -303,7 +309,7 @@ def main():
     """Main execution function"""
     print("=== PDF Sub-Chapter Vectorstore Creation ===")
     print(f"PDF: {PDF_PATH}")
-    print(f"Collection: {COLLECTION_NAME}")
+    print(f"FAISS Index: {FAISS_INDEX_NAME}")
     print(f"Persist directory: {PERSIST_DIRECTORY}")
     print()
     
@@ -316,9 +322,9 @@ def main():
         
         print()
         print("=== SUCCESS ===")
-        print(f"Created vectorstore with {len(documents)} sub-chapter chunks")
-        print(f"To use this collection, update config/settings.py:")
-        print(f"  'collection_name': '{COLLECTION_NAME}'")
+        print(f"Created FAISS vectorstore with {len(documents)} sub-chapter chunks")
+        print(f"To use this index, update config/settings.py:")
+        print(f"  'collection_name': '{FAISS_INDEX_NAME}'")
         
         # Test retrieval
         print("\n=== Testing retrieval ===")
