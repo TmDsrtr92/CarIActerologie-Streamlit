@@ -1,0 +1,13 @@
+*.log
+.git
+.vscode
+__pycache__
+*.pyc
+.env.local
+.streamlit/secrets.toml
+archives/
+tests/
+*.db-wal
+*.db-shm
+.pytest_cache
+.mypy_cache

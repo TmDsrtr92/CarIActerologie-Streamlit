@@ -135,6 +135,19 @@ class UserManager:
             )
         """)
         
+        # Password reset tokens table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                is_used BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        """)
+        
         conn.commit()
         
         # Run database migrations
@@ -715,6 +728,164 @@ class UserManager:
         except Exception as e:
             self.logger.error(f"Error deleting conversation: {e}")
             return False
+    
+    def create_password_reset_token(self, email: str) -> Optional[str]:
+        """
+        Create a password reset token for a user
+        
+        Args:
+            email: User's email address
+            
+        Returns:
+            Reset token if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("""
+                SELECT user_id, username FROM users WHERE email = ? AND is_active = 1
+            """, (email,))
+            
+            user_row = cursor.fetchone()
+            if not user_row:
+                self.logger.warning(f"Password reset requested for non-existent email: {email}")
+                return None
+            
+            user_id, username = user_row
+            
+            # Generate secure token
+            import secrets
+            token = secrets.token_urlsafe(32)
+            token_id = str(uuid.uuid4())
+            
+            # Set expiration (1 hour from now)
+            created_at = datetime.now()
+            expires_at = created_at + timedelta(hours=1)
+            
+            # Store token
+            cursor.execute("""
+                INSERT INTO password_reset_tokens (token_id, user_id, token, created_at, expires_at, is_used)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (token_id, user_id, token, created_at.isoformat(), expires_at.isoformat(), False))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.info(f"Password reset token created for user: {username}")
+            return token
+            
+        except Exception as e:
+            self.logger.error(f"Error creating password reset token: {e}")
+            return None
+    
+    def validate_reset_token(self, token: str) -> Optional[str]:
+        """
+        Validate a password reset token
+        
+        Args:
+            token: Reset token
+            
+        Returns:
+            User ID if valid, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT user_id, expires_at, is_used FROM password_reset_tokens 
+                WHERE token = ?
+            """, (token,))
+            
+            token_row = cursor.fetchone()
+            if not token_row:
+                return None
+            
+            user_id, expires_at_str, is_used = token_row
+            
+            # Check if token is already used
+            if is_used:
+                return None
+            
+            # Check if token is expired
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.now() > expires_at:
+                return None
+            
+            conn.close()
+            return user_id
+            
+        except Exception as e:
+            self.logger.error(f"Error validating reset token: {e}")
+            return None
+    
+    def reset_password_with_token(self, token: str, new_password: str) -> bool:
+        """
+        Reset password using a valid token
+        
+        Args:
+            token: Reset token
+            new_password: New password
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            user_id = self.validate_reset_token(token)
+            if not user_id:
+                return False
+            
+            # Validate new password
+            if len(new_password) < 8:
+                raise ValueError("Password must be at least 8 characters")
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Update password
+            password_hash = self._hash_password(new_password)
+            cursor.execute("""
+                UPDATE users SET password_hash = ? WHERE user_id = ?
+            """, (password_hash, user_id))
+            
+            # Mark token as used
+            cursor.execute("""
+                UPDATE password_reset_tokens SET is_used = 1 WHERE token = ?
+            """, (token,))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.info(f"Password reset completed for user: {user_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error resetting password: {e}")
+            return False
+    
+    def cleanup_expired_reset_tokens(self):
+        """Clean up expired password reset tokens"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            now = datetime.now().isoformat()
+            cursor.execute("""
+                DELETE FROM password_reset_tokens 
+                WHERE expires_at < ? OR is_used = 1
+            """, (now,))
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            if deleted_count > 0:
+                self.logger.info(f"Cleaned up {deleted_count} expired/used reset tokens")
+            
+        except Exception as e:
+            self.logger.error(f"Error cleaning up reset tokens: {e}")
 
 
 # Global user manager instance

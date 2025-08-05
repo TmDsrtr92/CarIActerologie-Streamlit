@@ -38,13 +38,69 @@ auth = get_auth()
 
 def main_app():
     """Main application content (protected by authentication)"""
-    # Initialize the app
-    st.title("CarIActérologie")
+    # Add responsive CSS for mobile devices
+    st.markdown("""
+    <style>
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        
+        /* Adjust chat input for mobile */
+        .stChatInput {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: white;
+            padding: 0.5rem;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        /* Adjust chat messages for mobile */
+        .stChatMessage {
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Improve sidebar for mobile */
+        .css-1d391kg {
+            width: 100% !important;
+        }
+    }
+    
+    /* Improve overall layout */
+    .main-header {
+        text-align: center;
+        padding: 1rem 0;
+        border-bottom: 2px solid #e3f2fd;
+        margin-bottom: 1rem;
+    }
+    
+    /* Enhanced chat input styling */
+    .stChatInput > div {
+        border-radius: 25px;
+        border: 2px solid #e3f2fd;
+    }
+    
+    .stChatInput > div:focus-within {
+        border-color: #2196f3;
+        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Initialize the app with enhanced header
+    st.markdown('<div class="main-header"><h1>🧠 CarIActérologie</h1><p>AI-powered Characterology Assistant</p></div>', unsafe_allow_html=True)
     logger.info("Application started")
 
-    # Initialize conversations
+    # Initialize conversations with loading state
     try:
-        initialize_conversations()
+        with st.status("Initializing conversations...", expanded=False) as status:
+            initialize_conversations()
+            status.update(label="✅ Conversations loaded", state="complete")
         logger.info("Conversations initialized successfully")
     except Exception as e:
         error_tracker.track_error(e, "conversation_initialization")
@@ -65,7 +121,8 @@ def main_app():
     selected_collection = get_selected_collection()
 
     # Set up QA chain with memory and selected collection
-    qa_chain = setup_qa_chain_with_memory(current_memory, collection_key=selected_collection)
+    with st.spinner(f"Setting up AI system with {selected_collection} collection..."):
+        qa_chain = setup_qa_chain_with_memory(current_memory, collection_key=selected_collection)
 
     # Show welcome message if this is a new conversation
     if should_show_welcome_message():
@@ -102,8 +159,13 @@ def main_app():
             assistant_msg = st.chat_message("assistant")
             stream_placeholder = assistant_msg.empty()
             
-            # Show loading indicator immediately
-            stream_placeholder.markdown("_🤔 Réflexion en cours..._")
+            # Show enhanced loading indicator with status
+            with stream_placeholder.container():
+                loading_status = st.status("🤔 Analyzing your question...", expanded=False)
+                with loading_status:
+                    st.write("🔍 Processing query...")
+                    st.write("📚 Searching knowledge base...")
+                    st.write("🧠 Generating response...")
             
             # Create streaming handler
             stream_handler = create_stream_handler(stream_placeholder)

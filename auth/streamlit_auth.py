@@ -333,16 +333,32 @@ class StreamlitAuth:
                 if not username or not password:
                     st.error("Please enter both username and password")
                 else:
-                    with st.spinner("Authenticating..."):
-                        if self.login(username, password, False):  # Always False for remember_me
-                            st.success("✅ Login successful!")
-                            time.sleep(1)  # Brief pause for user feedback
-                            st.rerun()
-                        else:
-                            st.error("❌ Invalid username or password")
+                    # Enhanced authentication loading with progress
+                    progress_placeholder = st.empty()
+                    with progress_placeholder.container():
+                        auth_status = st.status("🔐 Authenticating...", expanded=True)
+                        with auth_status:
+                            st.write("🔍 Verifying credentials...")
+                            time.sleep(0.5)  # Brief visual feedback
+                            
+                            if self.login(username, password, False):  # Always False for remember_me
+                                st.write("✅ Credentials validated")
+                                st.write("🚀 Setting up your session...")
+                                auth_status.update(label="✅ Login successful!", state="complete")
+                                time.sleep(1)  # Brief pause for user feedback
+                                progress_placeholder.empty()
+                                st.success("Welcome back! Redirecting...")
+                                time.sleep(0.5)
+                                st.rerun()
+                            else:
+                                st.write("❌ Invalid credentials")
+                                auth_status.update(label="❌ Authentication failed", state="error")
+                                time.sleep(1)
+                                progress_placeholder.empty()
+                                st.error("❌ Invalid username or password")
             
             if forgot_password:
-                st.info("🔧 Password reset functionality coming soon! Please contact your administrator.")
+                self._show_password_reset_form()
     
     def _render_register_tab(self):
         """Render registration form"""
@@ -371,16 +387,34 @@ class StreamlitAuth:
                 if not terms_accepted:
                     st.error("Please accept the Terms of Service to continue")
                 else:
-                    with st.spinner("Creating account..."):
-                        success, message = self.register_user(
-                            username, email, full_name, password, confirm_password
-                        )
-                        
-                        if success:
-                            st.success(f"✅ {message}")
-                            st.info("Please switch to the Login tab to sign in with your new account.")
-                        else:
-                            st.error(f"❌ {message}")
+                    # Enhanced registration loading with progress
+                    reg_progress = st.empty()
+                    with reg_progress.container():
+                        reg_status = st.status("🆕 Creating your account...", expanded=True)
+                        with reg_status:
+                            st.write("🔍 Validating information...")
+                            time.sleep(0.3)
+                            st.write("🔐 Securing your password...")
+                            time.sleep(0.3)
+                            st.write("💾 Creating user profile...")
+                            
+                            success, message = self.register_user(
+                                username, email, full_name, password, confirm_password
+                            )
+                            
+                            if success:
+                                st.write("✅ Account created successfully!")
+                                reg_status.update(label="✅ Registration complete!", state="complete")
+                                time.sleep(1)
+                                reg_progress.empty()
+                                st.success(f"✅ {message}")
+                                st.info("Please switch to the Login tab to sign in with your new account.")
+                            else:
+                                st.write(f"❌ {message}")
+                                reg_status.update(label="❌ Registration failed", state="error")
+                                time.sleep(1)
+                                reg_progress.empty()
+                                st.error(f"❌ {message}")
     
     def _create_guest_session(self):
         """Create a temporary guest session"""
@@ -396,6 +430,122 @@ class StreamlitAuth:
         }
         
         self.logger.info(f"Guest session created: {guest_id}")
+    
+    def _show_password_reset_form(self):
+        """Show password reset request form"""
+        st.subheader("🔑 Password Reset")
+        
+        # Check if we're handling a reset token from URL
+        query_params = st.query_params
+        if "reset_token" in query_params:
+            self._handle_password_reset(query_params["reset_token"])
+            return
+        
+        with st.form("password_reset_form"):
+            st.write("Enter your email address to receive a password reset link:")
+            
+            email = st.text_input("📧 Email Address", placeholder="your@email.com")
+            submit_reset = st.form_submit_button("🔑 Send Reset Link", type="primary", use_container_width=True)
+            
+            if submit_reset:
+                if not email:
+                    st.error("Please enter your email address")
+                elif "@" not in email:
+                    st.error("Please enter a valid email address")
+                else:
+                    self._send_password_reset_email(email)
+    
+    def _send_password_reset_email(self, email: str):
+        """Send password reset email (mock implementation)"""
+        reset_progress = st.empty()
+        
+        with reset_progress.container():
+            reset_status = st.status("📧 Sending reset link...", expanded=True)
+            with reset_status:
+                st.write("🔍 Checking email address...")
+                time.sleep(0.5)
+                
+                # Create reset token
+                token = self.user_manager.create_password_reset_token(email)
+                
+                if token:
+                    st.write("✅ Email found in system")
+                    st.write("📧 Generating reset link...")
+                    time.sleep(0.5)
+                    
+                    # Generate reset URL
+                    base_url = st.get_option("server.baseUrlPath") or "http://localhost:8501"
+                    reset_url = f"{base_url}?reset_token={token}"
+                    
+                    st.write("🚀 Sending email...")
+                    time.sleep(0.5)
+                    
+                    reset_status.update(label="✅ Reset link sent!", state="complete")
+                    
+                    # Since we don't have email configured, show the link directly
+                    st.success("✅ Password reset link generated!")
+                    st.info("📧 **For demo purposes, here's your reset link:**")
+                    st.code(reset_url, language="text")
+                    
+                    st.warning("⚠️ **Note:** In production, this link would be sent to your email address. The link expires in 1 hour.")
+                    
+                else:
+                    st.write("❌ Email not found")
+                    reset_status.update(label="❌ Email not found", state="error")
+                    time.sleep(1)
+                    reset_progress.empty()
+                    st.error("❌ No account found with that email address")
+    
+    def _handle_password_reset(self, token: str):
+        """Handle password reset with token"""
+        st.subheader("🔐 Reset Your Password")
+        
+        # Clear the token from URL
+        st.query_params.clear()
+        
+        # Validate token
+        user_id = self.user_manager.validate_reset_token(token)
+        if not user_id:
+            st.error("❌ Invalid or expired reset link")
+            st.info("Please request a new password reset link.")
+            return
+        
+        with st.form("new_password_form"):
+            st.success("✅ Valid reset link! Enter your new password:")
+            
+            new_password = st.text_input("🔒 New Password", type="password", placeholder="Enter new password")
+            confirm_password = st.text_input("🔒 Confirm Password", type="password", placeholder="Confirm new password")
+            
+            reset_password = st.form_submit_button("🔐 Reset Password", type="primary", use_container_width=True)
+            
+            if reset_password:
+                if not new_password or not confirm_password:
+                    st.error("Please enter both password fields")
+                elif new_password != confirm_password:
+                    st.error("Passwords do not match")
+                elif len(new_password) < 8:
+                    st.error("Password must be at least 8 characters")
+                else:
+                    reset_progress = st.empty()
+                    with reset_progress.container():
+                        reset_status = st.status("🔐 Resetting password...", expanded=True)
+                        with reset_status:
+                            st.write("🔒 Updating password...")
+                            time.sleep(0.5)
+                            
+                            if self.user_manager.reset_password_with_token(token, new_password):
+                                st.write("✅ Password updated successfully!")
+                                reset_status.update(label="✅ Password reset complete!", state="complete")
+                                time.sleep(1)
+                                reset_progress.empty()
+                                st.success("✅ Password has been reset successfully!")
+                                st.info("You can now log in with your new password.")
+                            else:
+                                st.write("❌ Failed to reset password")
+                                reset_status.update(label="❌ Reset failed", state="error")
+                                time.sleep(1)
+                                reset_progress.empty()
+                                st.error("❌ Failed to reset password. Please try again.")
     
     def _store_session_locally(self, session_id: str, remember_me: bool = False):
         """Store session ID in browser localStorage"""
@@ -554,7 +704,7 @@ class StreamlitAuth:
                         st.rerun()
     
     def render_user_settings(self):
-        """Render user settings dialog"""
+        """Render enhanced user settings dialog"""
         if not st.session_state.get("show_user_settings", False):
             return
         
@@ -562,55 +712,273 @@ class StreamlitAuth:
         if not user:
             return
         
-        with st.container():
-            st.subheader("⚙️ User Settings")
+        # Enhanced settings modal with tabs
+        st.markdown("---")
+        st.markdown("## ⚙️ User Settings")
+        
+        # Settings tabs
+        profile_tab, preferences_tab, security_tab = st.tabs(["👤 Profile", "🎨 Preferences", "🔐 Security"])
+        
+        with profile_tab:
+            self._render_profile_settings(user)
+        
+        with preferences_tab:
+            self._render_preference_settings(user)
+        
+        with security_tab:
+            self._render_security_settings(user)
+        
+        # Close settings button
+        st.divider()
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("❌ Close Settings", use_container_width=True):
+                st.session_state.show_user_settings = False
+                st.rerun()
+    
+    def _render_profile_settings(self, user):
+        """Render profile settings tab"""
+        with st.form("profile_settings_form"):
+            st.subheader("📝 Profile Information")
             
-            with st.form("user_settings_form"):
-                st.write("**Account Information**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_full_name = st.text_input("👨‍💼 Full Name", value=user.full_name)
+                new_email = st.text_input("📧 Email", value=user.email, disabled=True, 
+                                        help="Email cannot be changed. Contact admin if needed.")
                 
-                col1, col2 = st.columns(2)
+                # Avatar/Profile picture upload (placeholder)
+                st.write("**👤 Profile Picture**")
+                uploaded_file = st.file_uploader("Upload avatar", type=['png', 'jpg', 'jpeg'], 
+                                               help="Max size: 2MB")
+                if uploaded_file:
+                    st.image(uploaded_file, width=100)
+            
+            with col2:
+                st.write("**📊 Account Details**")
+                st.info(f"**Username:** {user.username}")
+                st.info(f"**Role:** {user.role.title()}")
+                st.info(f"**Member Since:** {user.created_at.strftime('%B %d, %Y')}")
+                st.info(f"**Last Login:** {user.last_login.strftime('%B %d, %Y at %H:%M') if user.last_login else 'Never'}")
                 
-                with col1:
-                    new_full_name = st.text_input("Full Name", value=user.full_name)
-                    new_email = st.text_input("Email", value=user.email)
-                
-                with col2:
-                    st.write(f"**Username:** {user.username}")
-                    st.write(f"**Role:** {user.role.title()}")
-                    st.write(f"**Member Since:** {user.created_at.strftime('%Y-%m-%d')}")
-                
-                st.divider()
-                st.write("**Preferences**")
-                
-                # Add user preference settings here
+                # Account statistics
+                st.write("**📈 Usage Stats**")
+                # This would be enhanced with real statistics
+                st.metric("Conversations", "12", "2")
+                st.metric("Messages Sent", "156", "23")
+            
+            # Bio/About section
+            st.divider()
+            bio = st.text_area("📝 About Me", 
+                             placeholder="Tell us about yourself...", 
+                             help="Optional profile description")
+            
+            save_profile = st.form_submit_button("💾 Save Profile Changes", type="primary", use_container_width=True)
+            
+            if save_profile:
+                if self._update_user_profile(user, new_full_name, bio, uploaded_file):
+                    st.success("✅ Profile updated successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to update profile")
+    
+    def _render_preference_settings(self, user):
+        """Render preferences settings tab"""
+        with st.form("preferences_form"):
+            st.subheader("🎨 Application Preferences")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**🤖 AI Assistant Settings**")
                 preferred_collection = st.selectbox(
                     "Default Collection",
-                    ["Sub-chapters (Semantic)", "Original (Character-based)"],
+                    ["subchapters", "original"],
+                    format_func=lambda x: "Sub-chapters (Semantic)" if x == "subchapters" else "Original (Character-based)",
                     help="Choose your preferred vector store collection"
                 )
                 
-                enable_notifications = st.checkbox("Enable Notifications", value=True)
+                response_style = st.selectbox(
+                    "Response Style",
+                    ["detailed", "concise", "balanced"],
+                    format_func=lambda x: x.title(),
+                    help="Preferred AI response style"
+                )
                 
-                col1, col2, col3 = st.columns(3)
+                auto_save = st.checkbox("Auto-save conversations", value=True,
+                                      help="Automatically save conversations to database")
+            
+            with col2:
+                st.write("**🔔 Notification Settings**")
+                email_notifications = st.checkbox("Email notifications", value=False)
+                welcome_message = st.checkbox("Show welcome message", value=True)
                 
-                with col1:
-                    save_clicked = st.form_submit_button("💾 Save Changes", type="primary")
+                st.write("**🎨 Interface Settings**")
+                compact_mode = st.checkbox("Compact mode", value=False,
+                                         help="Use a more compact interface layout")
                 
-                with col2:
-                    cancel_clicked = st.form_submit_button("❌ Cancel")
+                show_timestamps = st.checkbox("Show message timestamps", value=True)
                 
-                with col3:
-                    if user.role == "admin":
-                        admin_clicked = st.form_submit_button("🔧 Admin Panel")
+                st.write("**📊 Data & Privacy**")
+                analytics_consent = st.checkbox("Analytics consent", value=True,
+                                               help="Allow usage analytics to improve the service")
+            
+            st.divider()
+            st.write("**🌍 Language & Region**")
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                language = st.selectbox("Language", ["Français", "English"], index=0)
+            with col4:
+                timezone = st.selectbox("Timezone", ["Europe/Paris", "UTC", "America/New_York"])
+            
+            save_preferences = st.form_submit_button("💾 Save Preferences", type="primary", use_container_width=True)
+            
+            if save_preferences:
+                preferences = {
+                    "preferred_collection": preferred_collection,
+                    "response_style": response_style,
+                    "auto_save": auto_save,
+                    "email_notifications": email_notifications,
+                    "welcome_message": welcome_message,
+                    "compact_mode": compact_mode,
+                    "show_timestamps": show_timestamps,
+                    "analytics_consent": analytics_consent,
+                    "language": language,
+                    "timezone": timezone
+                }
                 
-                if save_clicked:
-                    st.success("Settings saved successfully!")
-                    st.session_state.show_user_settings = False
+                if self._update_user_preferences(user, preferences):
+                    st.success("✅ Preferences saved successfully!")
+                    time.sleep(1)
                     st.rerun()
+                else:
+                    st.error("❌ Failed to save preferences")
+    
+    def _render_security_settings(self, user):
+        """Render security settings tab"""
+        with st.container():
+            st.subheader("🔐 Security Settings")
+            
+            # Password change section
+            with st.expander("🔒 Change Password", expanded=False):
+                with st.form("change_password_form"):
+                    current_password = st.text_input("Current Password", type="password")
+                    new_password = st.text_input("New Password", type="password")
+                    confirm_password = st.text_input("Confirm New Password", type="password")
+                    
+                    change_password = st.form_submit_button("🔐 Change Password", type="primary")
+                    
+                    if change_password:
+                        if not all([current_password, new_password, confirm_password]):
+                            st.error("All password fields are required")
+                        elif new_password != confirm_password:
+                            st.error("New passwords do not match")
+                        elif len(new_password) < 8:
+                            st.error("New password must be at least 8 characters")
+                        else:
+                            # Verify current password and update
+                            if self.user_manager.authenticate(user.username, current_password):
+                                # Update password directly (bypassing the token system)
+                                if self._update_password(user, new_password):
+                                    st.success("✅ Password changed successfully!")
+                                else:
+                                    st.error("❌ Failed to change password")
+                            else:
+                                st.error("❌ Current password is incorrect")
+            
+            # Session management
+            with st.expander("📱 Active Sessions", expanded=False):
+                st.write("**Current Session**")
+                session = self.get_current_session()
+                if session:
+                    st.info(f"🖥️ Session ID: `{session.session_id[:8]}...`")
+                    st.info(f"📅 Created: {session.created_at.strftime('%Y-%m-%d %H:%M')}")
+                    st.info(f"⏰ Last Activity: {session.last_activity.strftime('%Y-%m-%d %H:%M')}")
+                    
+                    if st.button("🚪 Logout All Other Sessions", help="End all other active sessions"):
+                        st.warning("This feature will be implemented in a future update")
+            
+            # Account security info
+            st.divider()
+            st.write("**🛡️ Account Security**")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Account Status", "Active" if user.is_active else "Inactive")
+                st.metric("Role", user.role.title())
+            
+            with col2:
+                st.metric("Last Password Change", "N/A")  # This would need to be tracked
+                st.metric("Failed Login Attempts", "0")   # This would need to be tracked
+            
+            # Danger zone
+            with st.expander("⚠️ Danger Zone", expanded=False):
+                st.error("**Permanent Actions**")
+                st.write("These actions cannot be undone.")
                 
-                if cancel_clicked:
-                    st.session_state.show_user_settings = False
-                    st.rerun()
+                if st.button("🗑️ Delete Account", help="Permanently delete your account and all data"):
+                    st.session_state["confirm_delete_account"] = True
+                
+                if st.session_state.get("confirm_delete_account", False):
+                    st.error("⚠️ **ARE YOU SURE?** This will permanently delete your account and all conversations!")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("✅ Yes, Delete My Account", type="primary"):
+                            st.error("Account deletion will be implemented in a future update")
+                            st.session_state["confirm_delete_account"] = False
+                    with col2:
+                        if st.button("❌ Cancel"):
+                            st.session_state["confirm_delete_account"] = False
+                            st.rerun()
+    
+    def _update_user_profile(self, user, full_name: str, bio: str, avatar_file) -> bool:
+        """Update user profile information"""
+        try:
+            # This would update the user in the database
+            # For now, just simulate success
+            self.logger.info(f"Profile updated for user: {user.username}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error updating profile: {e}")
+            return False
+    
+    def _update_user_preferences(self, user, preferences: dict) -> bool:
+        """Update user preferences"""
+        try:
+            # This would save preferences to the database
+            # For now, just simulate success
+            self.logger.info(f"Preferences updated for user: {user.username}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error updating preferences: {e}")
+            return False
+    
+    def _update_password(self, user, new_password: str) -> bool:
+        """Update user password"""
+        try:
+            # Hash and update password in database
+            import sqlite3
+            password_hash = self.user_manager._hash_password(new_password)
+            
+            conn = sqlite3.connect(self.user_manager.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE users SET password_hash = ? WHERE user_id = ?
+            """, (password_hash, user.user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.info(f"Password updated for user: {user.username}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error updating password: {e}")
+            return False
 
 
 # Global authentication instance

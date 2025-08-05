@@ -619,6 +619,23 @@ def reset_session_state():
     initialize_conversations()
 
 
+def update_conversation_title(conversation_name, new_title):
+    """Update the title of a conversation"""
+    conversations_key = _get_user_conversations_key()
+    conversations = st.session_state.get(conversations_key, {})
+    
+    if conversation_name not in conversations:
+        return False
+    
+    # Update the title
+    conversations[conversation_name]["title"] = new_title
+    
+    # Auto-save to database
+    _auto_save_conversation(conversation_name)
+    
+    return True
+
+
 def _auto_save_conversation(conversation_name=None):
     """Auto-save current conversation to database for authenticated users"""
     user_id = _get_current_user_id()

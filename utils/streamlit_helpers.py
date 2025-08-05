@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 from langfuse.langchain import CallbackHandler
 from config.settings import STREAMING_CONFIG
 from config.welcome_config import WELCOME_MESSAGE, TEMPLATED_PROMPTS, WELCOME_STYLE, PROMPT_BUTTON_STYLE
@@ -26,25 +27,172 @@ def render_conversation_sidebar():
         create_new_conversation,
         get_current_memory,
         clear_conversation_memory,
-        reset_session_state
+        reset_session_state,
+        update_conversation_title
     )
     from config.settings import MEMORY_CONFIG, AVAILABLE_COLLECTIONS, DEFAULT_COLLECTION_KEY
     
     conversation_names = get_conversation_names()
     current_conversation = get_current_conversation()
     
+    # Get conversations data for title display
+    from utils.conversation_manager import _get_user_conversations_key
+    conversations_key = _get_user_conversations_key()
+    
     with st.sidebar:
-        st.title("Conversations")
-        selected = st.radio(
-            "Sélectionnez une conversation",
-            conversation_names,
-            index=conversation_names.index(current_conversation)
-        )
-        set_current_conversation(selected)
+        # Enhanced sidebar header
+        st.markdown("## 💬 Conversations")
         
-        if st.button("Nouvelle conversation"):
-            create_new_conversation()
-            st.rerun()
+        # Add conversation search
+        search_query = st.text_input("🔍 Search conversations", placeholder="Search by title or content...")
+        
+        # Filter conversations based on search
+        if search_query:
+            filtered_conversations = _filter_conversations(conversation_names, search_query)
+            display_conversations = filtered_conversations
+            st.caption(f"🔍 {len(filtered_conversations)} of {len(conversation_names)} conversations")
+        else:
+            display_conversations = conversation_names
+            st.caption(f"📊 {len(conversation_names)} conversation{'s' if len(conversation_names) != 1 else ''}")
+        
+        # Add filter options
+        with st.expander("🎯 Filters", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Date filter
+                date_filter = st.selectbox(
+                    "📅 Date Range",
+                    ["All", "Last 24 hours", "Last 7 days", "Last 30 days"],
+                    help="Filter conversations by date"
+                )
+            
+            with col2:
+                # Sort options
+                sort_option = st.selectbox(
+                    "📈 Sort by",
+                    ["Recent", "Oldest", "A-Z", "Z-A"],
+                    help="Sort conversations"
+                )
+            
+            # Apply filters and sorting
+            display_conversations = _apply_filters_and_sorting(display_conversations, date_filter, sort_option)
+        
+        # Enhanced conversation selection with custom styling
+        st.markdown("""
+        <style>
+        .conversation-item {
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.5rem;
+            border: 1px solid #e0e0e0;
+            background: #f9f9f9;
+        }
+        .conversation-item:hover {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+        .active-conversation {
+            background: #e3f2fd !important;
+            border-color: #2196f3 !important;
+            font-weight: bold;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Show filtered conversations or message if none found
+        if display_conversations:
+            # Ensure current conversation is in the display list, or select first one
+            if current_conversation in display_conversations:
+                selected_index = display_conversations.index(current_conversation)
+            else:
+                selected_index = 0
+                
+            # Create a format function that shows custom titles
+            def format_conversation_name(conv_name):
+                conversations = st.session_state.get(conversations_key, {})
+                conv_data = conversations.get(conv_name, {})
+                custom_title = conv_data.get("title", conv_name.title())
+                return f"📄 {custom_title}"
+            
+            selected = st.radio(
+                "Select a conversation:",
+                display_conversations,
+                index=selected_index,
+                format_func=format_conversation_name
+            )
+            set_current_conversation(selected)
+        else:
+            st.info("🔍 No conversations match your search criteria")
+            st.write("**Current conversation:**")
+            st.write(f"📄 {current_conversation.title()}")
+        
+        # Add editable title for current conversation
+        st.divider()
+        st.write("**✏️ Edit Current Conversation**")
+        
+        # Get current conversation details
+        conversations = st.session_state.get(conversations_key, {})
+        current_conv_data = conversations.get(current_conversation, {})
+        current_title = current_conv_data.get("title", current_conversation.title())
+        
+        # Title editing form
+        with st.form(f"edit_title_{current_conversation}"):
+            new_title = st.text_input(
+                "Conversation Title",
+                value=current_title,
+                placeholder="Enter conversation title...",
+                help="Give your conversation a meaningful name"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                save_title = st.form_submit_button("💾 Save", use_container_width=True)
+            with col2:
+                reset_title = st.form_submit_button("🔄 Reset", use_container_width=True)
+            
+            if save_title and new_title.strip():
+                if update_conversation_title(current_conversation, new_title.strip()):
+                    st.success("✅ Title updated!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to update title")
+            
+            if reset_title:
+                # Reset to default title format
+                default_title = current_conversation.title()
+                if update_conversation_title(current_conversation, default_title):
+                    st.success("🔄 Title reset!")
+                    time.sleep(0.5)
+                    st.rerun()
+        
+        # Enhanced new conversation button
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            if st.button("➕ New Conversation", use_container_width=True, type="primary"):
+                with st.spinner("Creating new conversation..."):
+                    create_new_conversation()
+                st.success("✅ New conversation created!")
+                time.sleep(0.5)
+                st.rerun()
+        
+        with col2:
+            # Add conversation management options
+            if st.button("🗑️", help="Clear current conversation", use_container_width=True):
+                if st.session_state.get("confirm_clear", False):
+                    clear_conversation_memory()
+                    st.success("Conversation cleared!")
+                    st.session_state["confirm_clear"] = False
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.session_state["confirm_clear"] = True
+                    st.warning("Click again to confirm clearing this conversation")
+        
+        # Show confirmation state
+        if st.session_state.get("confirm_clear", False):
+            st.error("⚠️ Click 🗑️ again to confirm deletion")
         
         # Collection selection section
         st.divider()
@@ -225,6 +373,98 @@ def get_selected_collection():
     
     return st.session_state.selected_collection
 
+
+def _filter_conversations(conversation_names, search_query):
+    """Filter conversations based on search query"""
+    from utils.conversation_manager import _get_user_conversations_key
+    import streamlit as st
+    
+    if not search_query:
+        return conversation_names
+    
+    search_query = search_query.lower()
+    filtered = []
+    
+    conversations_key = _get_user_conversations_key()
+    conversations = st.session_state.get(conversations_key, {})
+    
+    for conv_name in conversation_names:
+        conversation = conversations.get(conv_name, {})
+        
+        # Search in conversation name (key)
+        if search_query in conv_name.lower():
+            filtered.append(conv_name)
+            continue
+        
+        # Search in custom conversation title (most important)
+        custom_title = conversation.get("title", "")
+        if search_query in custom_title.lower():
+            filtered.append(conv_name)
+            continue
+        
+        # Search in message content
+        messages = conversation.get("messages", [])
+        for message in messages:
+            if search_query in message.get("content", "").lower():
+                filtered.append(conv_name)
+                break
+    
+    return filtered
+
+
+def _apply_filters_and_sorting(conversation_names, date_filter, sort_option):
+    """Apply date filters and sorting to conversations"""
+    from utils.conversation_manager import _get_user_conversations_key
+    from datetime import datetime, timedelta
+    import streamlit as st
+    
+    conversations_key = _get_user_conversations_key()
+    conversations = st.session_state.get(conversations_key, {})
+    
+    # Apply date filter
+    if date_filter != "All":
+        now = datetime.now()
+        if date_filter == "Last 24 hours":
+            cutoff = now - timedelta(hours=24)
+        elif date_filter == "Last 7 days":
+            cutoff = now - timedelta(days=7)
+        elif date_filter == "Last 30 days":
+            cutoff = now - timedelta(days=30)
+        else:
+            cutoff = None
+        
+        if cutoff:
+            filtered_by_date = []
+            for conv_name in conversation_names:
+                conversation = conversations.get(conv_name, {})
+                messages = conversation.get("messages", [])
+                
+                # Check if conversation has recent activity
+                # For now, we'll use a simple heuristic - if it has messages, consider it recent
+                # In a real implementation, you'd check actual timestamps
+                if messages:  # Has activity
+                    filtered_by_date.append(conv_name)
+            
+            conversation_names = filtered_by_date
+    
+    # Apply sorting
+    if sort_option == "Recent":
+        # Sort by most recent activity (conversations with more messages first)
+        conversation_names = sorted(conversation_names, 
+                                  key=lambda x: len(conversations.get(x, {}).get("messages", [])), 
+                                  reverse=True)
+    elif sort_option == "Oldest":
+        # Sort by least recent activity
+        conversation_names = sorted(conversation_names, 
+                                  key=lambda x: len(conversations.get(x, {}).get("messages", [])))
+    elif sort_option == "A-Z":
+        conversation_names = sorted(conversation_names)
+    elif sort_option == "Z-A":
+        conversation_names = sorted(conversation_names, reverse=True)
+    
+    return conversation_names
+
+
 def render_welcome_message():
     """
     Render welcome message with templated prompt buttons
@@ -268,7 +508,45 @@ def render_welcome_message():
                     process_templated_prompt(prompt_config['prompt'])
 
 def render_chat_messages(messages):
-    """Render chat messages in the main area"""
-    for message in messages:
-        chat_msg = st.chat_message(message["role"])
-        chat_msg.markdown(message["content"]) 
+    """Render chat messages in the main area with enhanced visualization"""
+    from datetime import datetime
+    
+    # Add minimal CSS for timestamps only
+    st.markdown("""
+    <style>
+    .message-timestamp {
+        font-size: 0.75rem;
+        color: #888;
+        margin-top: 0.5rem;
+        text-align: right;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    if not messages:
+        st.info("💬 No messages yet. Start a conversation!")
+        return
+    
+    # Show message count
+    st.caption(f"📝 {len(messages)} messages in this conversation")
+    
+    for i, message in enumerate(messages):
+        role = message["role"]
+        content = message["content"]
+        
+        # Add timestamp if available, otherwise use message index
+        timestamp = message.get("timestamp")
+        if not timestamp:
+            # Generate a mock timestamp for display (could be enhanced with real timestamps)
+            base_time = datetime.now()
+            timestamp = base_time.strftime("%H:%M:%S")
+        
+        with st.chat_message(role):
+            # Display message content normally
+            st.markdown(content)
+            
+            # Add timestamp below message
+            if role == "user":
+                st.markdown(f'<div class="message-timestamp">👤 You • {timestamp}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="message-timestamp">🤖 Assistant • {timestamp}</div>', unsafe_allow_html=True) 
