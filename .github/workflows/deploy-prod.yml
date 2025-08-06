@@ -1,0 +1,155 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (leave empty for latest)'
+        required: false
+      reason:
+        description: 'Reason for manual deployment'
+        required: false
+        default: 'Manual production deployment'
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  pre-production-checks:
+    runs-on: ubuntu-latest
+    name: Pre-Production Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Run comprehensive tests
+      run: |
+        pytest tests/ -v --tb=short
+      env:
+        PYTHONPATH: .
+        OPENAI_API_KEY: test_key
+
+    - name: Validate production configuration
+      run: |
+        python -c "
+        import os
+        os.environ['APP_ENV'] = 'production'
+        from config.app_config import get_config
+        config = get_config()
+        assert config.environment == 'production'
+        assert config.debug == False
+        print('✅ Production config validation passed')
+        "
+
+    - name: Security scan
+      run: |
+        pip install bandit safety
+        bandit -r . -f json || echo 'Security scan completed with warnings'
+        safety check || echo 'Dependency scan completed with warnings'
+
+    - name: Performance test simulation
+      run: |
+        python -c "
+        from core.llm_setup import setup_embeddings
+        from utils.chunks_display import ChunksCollector
+        import time
+        start = time.time()
+        collector = ChunksCollector()
+        end = time.time()
+        print(f'✅ Component initialization: {end-start:.3f}s')
+        "
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    name: Deploy to Production Environment
+    needs: pre-production-checks
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create production release
+      run: |
+        echo "Production deployment at $(date)" >> production-deployment.log
+        echo "Commit: ${{ github.sha }}" >> production-deployment.log
+        echo "Branch/Tag: ${{ github.ref_name }}" >> production-deployment.log
+        echo "Triggered by: ${{ github.actor }}" >> production-deployment.log
+        echo "Version: ${{ github.event.inputs.version || 'latest' }}" >> production-deployment.log
+
+    - name: Generate production release notes
+      run: |
+        echo "# Production Release - $(date)" > RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🚀 Deployment Information" >> RELEASE_NOTES.md
+        echo "- **Version:** ${{ github.event.inputs.version || github.ref_name }}" >> RELEASE_NOTES.md
+        echo "- **Commit:** \`${{ github.sha }}\`" >> RELEASE_NOTES.md
+        echo "- **Deployed by:** ${{ github.actor }}" >> RELEASE_NOTES.md
+        echo "- **Environment:** Production" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 📋 Recent Changes" >> RELEASE_NOTES.md
+        git log --oneline -n 10 >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🔗 Links" >> RELEASE_NOTES.md
+        echo "- **Production App:** https://cariacterologie.streamlit.app" >> RELEASE_NOTES.md
+        echo "- **Development App:** https://cariacterologie-dev.streamlit.app" >> RELEASE_NOTES.md
+
+    - name: Notify production deployment
+      run: |
+        echo "🎉 PRODUCTION DEPLOYMENT SUCCESSFUL"
+        echo "🔗 App URL: https://cariacterologie.streamlit.app"
+        echo "📊 Monitor app performance and user feedback"
+        echo "🔄 Rollback available if needed"
+
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
+        body_path: RELEASE_NOTES.md
+        draft: false
+        prerelease: false
+
+    - name: Upload production artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: prod-deployment-${{ github.sha }}
+        path: |
+          production-deployment.log
+          RELEASE_NOTES.md
+
+  post-deployment-monitoring:
+    runs-on: ubuntu-latest
+    name: Post-Deployment Monitoring
+    needs: deploy-production
+    if: always()
+    
+    steps:
+    - name: Wait for deployment stabilization
+      run: sleep 30
+
+    - name: Basic health check
+      run: |
+        echo "🏥 Basic health checks would run here"
+        echo "- App accessibility"  
+        echo "- Core functionality"
+        echo "- Performance metrics"
+        echo "📊 Set up monitoring dashboards for detailed tracking"

@@ -9,3 +9,4 @@ tiktoken
 faiss-cpu
 PyPDF2
 bcrypt
+langfuse

@@ -44,6 +44,11 @@ def get_langfuse_prompt(prompt_name: str = "caracterologie_qa", version: int = N
     """
     try:
         config = get_langfuse_config()
+        
+        # Check if Langfuse keys are available
+        if not config["secret_key"] or not config["public_key"]:
+            raise ValueError("Langfuse keys not configured")
+        
         langfuse = Langfuse(
             secret_key=config["secret_key"],
             public_key=config["public_key"],
@@ -70,8 +75,12 @@ def get_langfuse_prompt(prompt_name: str = "caracterologie_qa", version: int = N
         return prompt_text
         
     except Exception as e:
-        st.warning(f"Could not fetch prompt from Langfuse: {e}. Using fallback prompt.")
-        return FALLBACK_SYSTEM_PROMPT
+        if "keys not configured" in str(e):
+            # Silently use fallback when keys are not configured (expected in some environments)
+            return FALLBACK_SYSTEM_PROMPT
+        else:
+            st.warning(f"Could not fetch prompt from Langfuse: {e}. Using fallback prompt.")
+            return FALLBACK_SYSTEM_PROMPT
 
 def get_qa_prompt(prompt_name: str = "caracterologie_qa", version: int = None):
     """Get the QA prompt template from Langfuse or fallback"""

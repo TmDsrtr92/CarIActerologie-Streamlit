@@ -282,10 +282,16 @@ _config: Optional[AppConfig] = None
 
 
 def get_config() -> AppConfig:
-    """Get the global configuration instance"""
+    """Get the global configuration instance with environment-specific overrides"""
     global _config
     if _config is None:
-        _config = AppConfig.load()
+        try:
+            # Try to load environment-specific configuration
+            from config.environments import get_environment_config
+            _config = get_environment_config()
+        except ImportError:
+            # Fallback to base configuration if environments module not available
+            _config = AppConfig.load()
         
         # Validate configuration
         errors = _config.validate()

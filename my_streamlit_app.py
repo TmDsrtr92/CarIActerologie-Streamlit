@@ -186,9 +186,14 @@ def main_app():
                 def qa_chain_call():
                     logger_context = get_logger("qa_chain")
                     with log_execution_time(logger_context, "qa_chain_invocation", query_length=len(prompt_input)):
+                        # Build callback list, excluding None handlers
+                        callbacks = [stream_handler, retrieval_handler]
+                        if langfuse_handler is not None:
+                            callbacks.insert(0, langfuse_handler)
+                        
                         return qa_chain.invoke(
                             {"question": prompt_input},
-                            config={"callbacks": [langfuse_handler, stream_handler, retrieval_handler]}
+                            config={"callbacks": callbacks}
                         )
                 
                 def on_retry_callback(attempt: int, error: Exception):
