@@ -1,0 +1,141 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [ main, development ]
+  push:
+    branches: [ main, development ]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Create test environment file
+      run: |
+        echo "OPENAI_API_KEY=test_key" >> .env
+        echo "APP_ENV=testing" >> .env
+
+    - name: Run linting with ruff
+      run: |
+        ruff check . --fix
+      continue-on-error: true
+
+    - name: Run type checking with mypy
+      run: |
+        mypy . --ignore-missing-imports --no-strict-optional
+      continue-on-error: true
+
+    - name: Run tests with pytest
+      run: |
+        pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
+      env:
+        PYTHONPATH: .
+        OPENAI_API_KEY: test_key
+
+    - name: Test configuration loading
+      run: |
+        python -c "from config.app_config import get_config; config = get_config(); print('✅ Config loads successfully')"
+
+    - name: Test imports
+      run: |
+        python -c "
+        from core.llm_setup import setup_llm, setup_embeddings;
+        from utils.chunks_display import ChunksCollector;
+        from core.callbacks import RetrievalCallbackHandler;
+        print('✅ All imports successful')
+        "
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install security tools
+      run: |
+        pip install bandit safety
+
+    - name: Run bandit security scan
+      run: |
+        bandit -r . -f json -o bandit-report.json
+      continue-on-error: true
+
+    - name: Check dependencies for vulnerabilities
+      run: |
+        safety check --json --output safety-report.json
+      continue-on-error: true
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install quality tools
+      run: |
+        pip install black isort flake8
+
+    - name: Check code formatting
+      run: |
+        black --check .
+      continue-on-error: true
+
+    - name: Check import sorting
+      run: |
+        isort --check-only .
+      continue-on-error: true
+
+    - name: Run flake8
+      run: |
+        flake8 . --max-line-length=120 --extend-ignore=E203,W503
+      continue-on-error: true
