@@ -67,12 +67,12 @@ class StreamlitCallbackHandler(BaseCallbackHandler):
             generation_time = (end_time - self.first_token_time) * 1000
             avg_tokens_per_sec = self.total_tokens / ((end_time - self.first_token_time) + 0.001)
             
-            self.logger.info(f"✅ LLM Response Complete:")
-            self.logger.info(f"   📏 Total tokens: {self.total_tokens}")
-            self.logger.info(f"   ⚡ Time to First Token: {ttft:.1f}ms")
-            self.logger.info(f"   🏃 Generation time: {generation_time:.1f}ms")
-            self.logger.info(f"   ⏱️ Total time: {total_time:.1f}ms")
-            self.logger.info(f"   🚀 Average speed: {avg_tokens_per_sec:.1f} tokens/sec")
+            self.logger.info(f"LLM Response Complete:")
+            self.logger.info(f"   Total tokens: {self.total_tokens}")
+            self.logger.info(f"   Time to First Token: {ttft:.1f}ms")
+            self.logger.info(f"   Generation time: {generation_time:.1f}ms")
+            self.logger.info(f"   Total time: {total_time:.1f}ms")
+            self.logger.info(f"   Average speed: {avg_tokens_per_sec:.1f} tokens/sec")
         
         # Display final response without cursor
         self.placeholder.markdown(self.text)
