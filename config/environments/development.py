@@ -12,7 +12,6 @@ class DevelopmentConfig(AppConfig):
     """Development environment configuration"""
     
     def __post_init__(self):
-        super().__post_init__()
         
         # Development-specific overrides
         self.environment = "development"

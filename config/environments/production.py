@@ -12,7 +12,6 @@ class ProductionConfig(AppConfig):
     """Production environment configuration"""
     
     def __post_init__(self):
-        super().__post_init__()
         
         # Production-specific overrides
         self.environment = "production"
