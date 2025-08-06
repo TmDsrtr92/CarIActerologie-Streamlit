@@ -1,6 +1,9 @@
 import time
 from langchain.callbacks.base import BaseCallbackHandler
 from utils.logging_config import get_logger
+from utils.chunks_display import ChunksCollector
+from typing import List, Optional
+from langchain_core.documents import Document
 
 class StreamlitCallbackHandler(BaseCallbackHandler):
     """Handler pour afficher le texte en streaming dans Streamlit"""
@@ -78,15 +81,19 @@ class StreamlitCallbackHandler(BaseCallbackHandler):
         self.placeholder.markdown(self.text)
 
 class RetrievalCallbackHandler(BaseCallbackHandler):
-    """Handler pour afficher les chunks récupérés dans la console"""
+    """Handler pour afficher les chunks récupérés dans la console et stocker pour l'UI"""
     
-    def __init__(self, memory=None):
+    def __init__(self, memory=None, chunks_collector: Optional[ChunksCollector] = None):
         self.memory = memory
         self.original_question = None
+        self.chunks_collector = chunks_collector or ChunksCollector()
+        self.retrieved_documents: List[Document] = []
     
     def on_retriever_start(self, serialized, query, **kwargs):
         # Stocker la question originale pour comparaison
         self.original_question = query
+        # Stocker la question dans le collector pour l'affichage UI
+        self.chunks_collector.set_question(query)
         
         print(f"\nRecherche de chunks pour la question: '{query}'")
         print("=" * 80)
@@ -113,6 +120,10 @@ class RetrievalCallbackHandler(BaseCallbackHandler):
             print("\nMemoire de conversation: (non disponible)")
     
     def on_retriever_end(self, documents, **kwargs):
+        # Stocker les documents pour l'affichage UI
+        self.retrieved_documents = documents.copy()
+        self.chunks_collector.add_chunks(documents)
+        
         print(f"{len(documents)} chunks recuperes:")
         print("-" * 80)
         for i, doc in enumerate(documents, 1):
@@ -225,4 +236,12 @@ class RetrievalCallbackHandler(BaseCallbackHandler):
         else:
             print("Aucun prompt systeme trouve")
         
-        print("=" * 80) 
+        print("=" * 80)
+    
+    def get_chunks_collector(self) -> ChunksCollector:
+        """Get the chunks collector for UI display"""
+        return self.chunks_collector
+    
+    def get_retrieved_documents(self) -> List[Document]:
+        """Get the last retrieved documents"""
+        return self.retrieved_documents.copy()

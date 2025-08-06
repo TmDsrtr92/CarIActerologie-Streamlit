@@ -12,7 +12,9 @@
       "Bash(ls:*)",
       "Bash(pip install:*)",
       "Bash(git branch:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(python -m streamlit run:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

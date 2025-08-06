@@ -23,8 +23,8 @@ def setup_vectorstore(collection_key: str = None):
     config = get_config()
     collection_config = config.vectorstore.get_collection_config(collection_key)
     
-    # Build FAISS index path
-    faiss_path = os.path.join(collection_config["persist_directory"], f"{collection_config['collection_name']}_faiss")
+    # Build FAISS index path (collection_name already includes _faiss suffix)
+    faiss_path = os.path.join(collection_config["persist_directory"], collection_config["collection_name"])
     
     try:
         # Try to load existing FAISS index

@@ -23,6 +23,7 @@ from utils.streamlit_helpers import (
     get_selected_collection
 )
 from core.callbacks import RetrievalCallbackHandler
+from utils.chunks_display import ChunksCollector
 from auth.streamlit_auth import get_auth
 from config.app_config import get_config
 
@@ -170,8 +171,11 @@ def main_app():
             # Create streaming handler
             stream_handler = create_stream_handler(stream_placeholder)
             
-            # Create retrieval callback handler with memory
-            retrieval_handler = RetrievalCallbackHandler(memory=current_memory)
+            # Create chunks collector for UI display
+            chunks_collector = ChunksCollector()
+            
+            # Create retrieval callback handler with memory and chunks collector
+            retrieval_handler = RetrievalCallbackHandler(memory=current_memory, chunks_collector=chunks_collector)
 
             # Get response from QA chain with retry logic and user feedback
             retry_status = RetryStatus()
@@ -227,6 +231,9 @@ def main_app():
 
             # Display final response (remove cursor and any retry messages)
             stream_placeholder.markdown(cleaned_answer)
+            
+            # Display retrieved chunks component after the answer
+            chunks_collector.render_if_available()
 
             # Add assistant message to conversation
             add_message("assistant", cleaned_answer)
@@ -271,6 +278,9 @@ def main_app():
                 
                 # Display fallback response in chat format (not as error)
                 stream_placeholder.markdown(complete_response)
+                
+                # Display chunks if any were retrieved before the circuit breaker opened
+                chunks_collector.render_if_available()
                 
                 # Add fallback message to conversation history  
                 add_message("assistant", complete_response)
