@@ -7,8 +7,18 @@ from core.callbacks import StreamlitCallbackHandler
 
 
 def get_langfuse_handler():
-    """Get Langfuse callback handler"""
-    return CallbackHandler()
+    """Get Langfuse callback handler if keys are configured, otherwise return None"""
+    try:
+        from config.app_config import get_config
+        config = get_config()
+        
+        # Only initialize if both keys are available
+        if config.api.langfuse_secret_key and config.api.langfuse_public_key:
+            return CallbackHandler()
+        else:
+            return None
+    except Exception:
+        return None
 
 def create_stream_handler(placeholder):
     """Create a streaming callback handler for Streamlit"""
