@@ -140,6 +140,10 @@ def main_app():
     prompt_input = pending_prompt  # Only use pending prompt if it exists
 
     if prompt_input:
+        # Initialize variables at the top to avoid UnboundLocalError in exception handlers
+        retry_status = RetryStatus()
+        chunks_collector = ChunksCollector()
+        
         try:
             # Log user interaction
             log_user_interaction(
@@ -171,14 +175,10 @@ def main_app():
             # Create streaming handler
             stream_handler = create_stream_handler(stream_placeholder)
             
-            # Create chunks collector for UI display
-            chunks_collector = ChunksCollector()
-            
             # Create retrieval callback handler with memory and chunks collector
             retrieval_handler = RetrievalCallbackHandler(memory=current_memory, chunks_collector=chunks_collector)
 
-            # Get response from QA chain with retry logic and user feedback
-            retry_status = RetryStatus()
+            # Set up retry status placeholder for user feedback
             retry_status_placeholder = stream_placeholder  # Use same placeholder for retry messages
             
             def execute_qa_chain_with_feedback():
