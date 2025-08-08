@@ -52,7 +52,7 @@ class TestMemoryRepository:
     
     def test_set_current_thread(self):
         """Test setting current thread"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         
         thread_id1 = manager.create_conversation("Conversation 1")
         thread_id2 = manager.create_conversation("Conversation 2")
@@ -71,7 +71,7 @@ class TestMemoryRepository:
         mock_encoding.encode.return_value = [1, 2, 3, 4, 5]  # 5 tokens
         mock_tiktoken.encoding_for_model.return_value = mock_encoding
         
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         thread_id = manager.create_conversation("Test Conversation")
         
         # Add human message
@@ -97,7 +97,7 @@ class TestMemoryRepository:
         mock_encoding.encode.return_value = [1] * 1500  # 1500 tokens per message
         mock_tiktoken.encoding_for_model.return_value = mock_encoding
         
-        manager = LangGraphMemoryManager(db_path=self.db_path, max_token_limit=4000)
+        manager = MemoryRepository(db_path=self.db_path, max_token_limit=4000)
         thread_id = manager.create_conversation("Test Conversation")
         
         # Add messages that exceed token limit (3 * 1500 = 4500 > 4000)
@@ -116,7 +116,7 @@ class TestMemoryRepository:
     
     def test_clear_conversation(self):
         """Test clearing conversation messages"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         thread_id = manager.create_conversation("Test Conversation")
         
         manager.add_message("human", "Hello")
@@ -130,7 +130,7 @@ class TestMemoryRepository:
     
     def test_delete_conversation(self):
         """Test deleting conversation"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         
         thread_id1 = manager.create_conversation("Conversation 1")
         thread_id2 = manager.create_conversation("Conversation 2")
@@ -151,7 +151,7 @@ class TestMemoryRepository:
     
     def test_list_conversations(self):
         """Test listing all conversations"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         
         thread_id1 = manager.create_conversation("Conversation 1")
         thread_id2 = manager.create_conversation("Conversation 2")
@@ -165,7 +165,7 @@ class TestMemoryRepository:
     
     def test_get_conversation_summary(self):
         """Test getting conversation summary"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         thread_id = manager.create_conversation("Test Conversation")
         
         manager.add_message("human", "Hello")
@@ -180,7 +180,7 @@ class TestMemoryRepository:
     
     def test_get_token_count(self):
         """Test token counting functionality"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        manager = MemoryRepository(db_path=self.db_path)
         thread_id = manager.create_conversation("Test Conversation")
         
         initial_count = manager.get_token_count()
@@ -216,7 +216,7 @@ class TestConversationMemory:
         memory = ConversationMemory(db_path=self.db_path)
         
         assert hasattr(memory, 'manager')
-        assert isinstance(memory.manager, LangGraphMemoryManager)
+        assert isinstance(memory.manager, MemoryRepository)
         assert hasattr(memory.manager, '_is_langgraph_memory')
     
     def test_backward_compatibility_methods(self):
@@ -246,7 +246,7 @@ class TestMemoryFactoryFunctions:
         
         manager = create_langgraph_memory_manager()
         
-        assert isinstance(manager, LangGraphMemoryManager)
+        assert isinstance(manager, MemoryRepository)
         assert hasattr(manager, '_is_langgraph_memory')
     
     def test_create_memory_manager(self):
@@ -257,7 +257,7 @@ class TestMemoryFactoryFunctions:
         
         assert isinstance(memory, ConversationMemory)
         assert hasattr(memory, 'manager')
-        assert isinstance(memory.manager, LangGraphMemoryManager)
+        assert isinstance(memory.manager, MemoryRepository)
 
 
 if __name__ == "__main__":

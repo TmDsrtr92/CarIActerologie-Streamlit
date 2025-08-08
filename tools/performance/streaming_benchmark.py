@@ -8,7 +8,7 @@ import time
 import asyncio
 from services.ai_service.llm_client import get_llm_client
 from services.ai_service.qa_engine import get_qa_engine
-from services.chat_service.memory_repository import get_memory_repository
+from services.chat_service.memory_repository import get_memory_repository, MemoryRepository
 from infrastructure.monitoring.logging_service import initialize_logging, get_logger
 
 # Simple callback to measure streaming performance
@@ -86,7 +86,7 @@ def test_rag_chain_streaming():
     
     try:
         # Set up memory manager
-        memory_manager = LangGraphMemoryManager()
+        memory_manager = MemoryRepository()
         
         # Set up QA chain
         qa_chain = setup_qa_chain_with_memory(memory_manager)

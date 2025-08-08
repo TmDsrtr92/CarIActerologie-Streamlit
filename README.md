@@ -70,7 +70,7 @@ A sophisticated Retrieval-Augmented Generation (RAG) application powered by **La
 
 ### **LangGraph Memory System** 🆕
 **`core/langgraph_memory.py`** - Modern memory management
-- **LangGraphMemoryManager**: Thread-based conversation persistence
+- **MemoryRepository**: Thread-based conversation persistence
 - **Conversation lifecycle**: Create, update, delete, summarize
 - **Token management**: Smart trimming with tiktoken integration
 - **SQLite persistence**: Metadata storage across sessions
