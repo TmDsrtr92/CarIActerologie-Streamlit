@@ -5,7 +5,7 @@ import openai
 # Microservices imports
 from services.ai_service.qa_engine import get_qa_engine
 from services.ai_service.models import QARequest
-from services.auth_service.auth_manager import get_auth_manager
+# Removed auth system - using simple user session instead
 from services.chat_service.conversation_manager import get_conversation_manager
 from services.ui_service.chat_interface import get_chat_interface
 from infrastructure.config.settings import get_config
@@ -20,7 +20,9 @@ from services.ui_service.chunks_renderer import ChunksCollector
 # Initialize microservices
 config = get_config()
 logger = get_logger(__name__)
-auth_manager = get_auth_manager()
+# Replaced complex auth system with simple session-based user tracking
+from services.simple_user_session import get_simple_user_session
+user_session = get_simple_user_session()
 conversation_manager = get_conversation_manager()
 chat_interface = get_chat_interface()
 qa_engine = get_qa_engine()
@@ -358,15 +360,6 @@ def main_app():
         st.rerun()
 
 
-# Apply authentication wrapper
-if config.auth.enabled:
-    # Render user menu in sidebar if authenticated
-    current_session = auth_manager.get_current_session()
-    if current_session:
-        auth_manager.render_user_menu()
-    
-    # Apply authentication requirement
-    auth_manager.require_authentication(main_app)
-else:
-    # Authentication disabled, run main app directly
-    main_app()
+# Simple user session - no authentication required
+user_session.render_user_info_sidebar()
+main_app()

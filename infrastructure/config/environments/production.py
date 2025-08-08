@@ -32,11 +32,7 @@ class ProductionConfig(AppConfig):
         self.langgraph.enable_semantic_search = False
         self.langgraph.max_conversations = 100  # Higher limit for production
         
-        # Production security settings
-        self.auth.allow_guest_mode = True
-        self.auth.require_email_verification = True
-        self.auth.max_login_attempts = 3
-        self.auth.lockout_duration_minutes = 30
+        # Removed auth settings - using simple user session
         
         # Production vector store settings - optimized for performance
         self.vectorstore.search_kwargs = {"k": 10}
