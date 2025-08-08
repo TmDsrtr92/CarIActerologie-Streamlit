@@ -14,7 +14,13 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(python -m streamlit run:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(mkdir:*)",
+      "Bash(copy:*)",
+      "Bash(powershell:*)",
+      "Bash(mv:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": []
   }

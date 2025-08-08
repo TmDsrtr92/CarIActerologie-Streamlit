@@ -6,7 +6,7 @@ import pytest
 import os
 import tempfile
 from pathlib import Path
-from config.app_config import (
+from infrastructure.config.settings import (
     AppConfig, APIConfig, LLMConfig, VectorStoreConfig, 
     MemoryConfig, LangGraphConfig, StreamingConfig, UIConfig,
     get_config, reload_config
@@ -64,25 +64,25 @@ class TestVectorStoreConfig:
         """Test default collections are properly configured"""
         config = VectorStoreConfig()
         
-        assert "Sub-chapters (Semantic)" in config.collections
-        assert "Original (Character-based)" in config.collections
-        assert config.default_collection_key == "Sub-chapters (Semantic)"
+        assert "subchapters" in config.collections
+        assert "original" in config.collections
+        assert config.default_collection_key == "subchapters"
     
     def test_get_collection_config_default(self):
         """Test getting default collection config"""
         config = VectorStoreConfig()
         collection_config = config.get_collection_config()
         
-        assert collection_config["collection_name"] == "traite_subchapters"
+        assert collection_config["collection_name"] == "traite_subchapters_faiss"
         assert collection_config["chunk_type"] == "semantic"
-        assert collection_config["search_kwargs"] == {"k": 10}
+        assert collection_config["search_kwargs"] == {"k": 5}
     
     def test_get_collection_config_specific(self):
         """Test getting specific collection config"""
         config = VectorStoreConfig()
-        collection_config = config.get_collection_config("Original (Character-based)")
+        collection_config = config.get_collection_config("original")
         
-        assert collection_config["collection_name"] == "traite"
+        assert collection_config["collection_name"] == "traite_faiss"
         assert collection_config["chunk_type"] == "character"
     
     def test_get_collection_config_invalid_fallback(self):
@@ -91,7 +91,7 @@ class TestVectorStoreConfig:
         collection_config = config.get_collection_config("NonExistent")
         
         # Should fallback to default
-        assert collection_config["collection_name"] == "traite_subchapters"
+        assert collection_config["collection_name"] == "traite_subchapters_faiss"
 
 
 class TestAppConfig:
@@ -209,7 +209,7 @@ class TestBackwardCompatibility:
     
     def test_get_openai_api_key(self, monkeypatch):
         """Test backward compatibility for OpenAI API key"""
-        from config.app_config import get_openai_api_key
+        from infrastructure.config.settings import get_openai_api_key
         
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         reload_config()  # Reload to pick up env var
@@ -219,7 +219,7 @@ class TestBackwardCompatibility:
     
     def test_get_langfuse_config_compat(self, monkeypatch):
         """Test backward compatibility for Langfuse config"""
-        from config.app_config import get_langfuse_config
+        from infrastructure.config.settings import get_langfuse_config
         
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
@@ -231,7 +231,7 @@ class TestBackwardCompatibility:
     
     def test_get_vectorstore_config_compat(self):
         """Test backward compatibility for vectorstore config"""
-        from config.app_config import get_vectorstore_config
+        from infrastructure.config.settings import get_vectorstore_config
         
         config = get_vectorstore_config()
         assert "collection_name" in config

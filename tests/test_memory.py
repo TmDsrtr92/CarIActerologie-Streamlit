@@ -6,11 +6,12 @@ import pytest
 import tempfile
 import os
 from unittest.mock import Mock, patch
-from core.langgraph_memory import LangGraphMemoryManager, ConversationMemory
+from services.chat_service.memory_repository import MemoryRepository, get_memory_repository
+# Legacy import removed - using microservice memory repository
 
 
-class TestLangGraphMemoryManager:
-    """Test LangGraph memory manager"""
+class TestMemoryRepository:
+    """Test memory repository"""
     
     def setup_method(self):
         """Set up test environment"""
@@ -24,30 +25,30 @@ class TestLangGraphMemoryManager:
         os.rmdir(self.temp_dir)
     
     def test_initialization(self):
-        """Test memory manager initialization"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        """Test memory repository initialization"""
+        repo = MemoryRepository(db_path=self.db_path)
         
-        assert manager.max_token_limit == 4000
-        assert manager.model_name == "gpt-4o-mini"
-        assert manager.db_path == self.db_path
-        assert hasattr(manager, '_is_langgraph_memory')
-        assert manager._is_langgraph_memory is True
+        assert repo.max_token_limit == 4000
+        assert repo.model_name == "gpt-4o-mini"
+        assert repo.db_path == self.db_path
+        assert hasattr(repo, '_is_langgraph_memory')
+        assert repo._is_langgraph_memory is True
         assert os.path.exists(self.db_path)
     
     def test_create_conversation(self):
         """Test conversation creation"""
-        manager = LangGraphMemoryManager(db_path=self.db_path)
+        repo = MemoryRepository(db_path=self.db_path)
         
-        thread_id = manager.create_conversation("Test Conversation")
+        thread_id = repo.create_conversation("Test Conversation")
         
         assert isinstance(thread_id, str)
         assert len(thread_id) > 0
-        assert manager.current_thread_id == thread_id
         
-        # Verify conversation exists in database
-        summary = manager.get_conversation_summary(thread_id)
-        assert summary['title'] == "Test Conversation"
-        assert summary['message_count'] == 0
+        # Verify conversation exists in list
+        summaries = repo.list_conversations()
+        assert len(summaries) == 1
+        assert summaries[0].title == "Test Conversation"
+        assert summaries[0].message_count == 0
     
     def test_set_current_thread(self):
         """Test setting current thread"""
@@ -241,7 +242,7 @@ class TestMemoryFactoryFunctions:
     
     def test_create_langgraph_memory_manager(self):
         """Test creating LangGraph memory manager"""
-        from core.langgraph_memory import create_langgraph_memory_manager
+        from services.chat_service.memory_repository import get_memory_repository
         
         manager = create_langgraph_memory_manager()
         
@@ -250,7 +251,7 @@ class TestMemoryFactoryFunctions:
     
     def test_create_memory_manager(self):
         """Test creating backward compatible memory manager"""
-        from core.langgraph_memory import create_memory_manager
+        from services.chat_service.memory_repository import get_memory_repository
         
         memory = create_memory_manager()
         

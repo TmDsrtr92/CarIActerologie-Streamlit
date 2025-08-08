@@ -7,7 +7,7 @@ sys.path.append('.')
 
 import time
 from datetime import datetime
-from utils.retry_utils import CircuitBreaker, CircuitBreakerError, CircuitState
+from infrastructure.resilience.retry_service import CircuitBreaker, CircuitBreakerError, CircuitBreakerState
 
 def simulate_circuit_breaker_behavior():
     """Demonstrate circuit breaker state transitions"""

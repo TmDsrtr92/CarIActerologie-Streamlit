@@ -4,11 +4,11 @@ Tests for LangGraph QA chain system
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from core.langgraph_qa_chain import (
-    LangGraphRAGChain, RAGState, clean_response, 
-    setup_langgraph_qa_chain, setup_qa_chain_with_memory
+from services.ai_service.qa_engine import (
+    get_qa_engine, clean_response
 )
-from core.langgraph_memory import LangGraphMemoryManager
+from services.ai_service.models import RAGState
+from services.chat_service.memory_repository import get_memory_repository
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, AIMessage
 

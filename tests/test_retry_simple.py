@@ -12,12 +12,12 @@ def test_retry_implementation():
     
     # Test 1: Import verification
     try:
-        from utils.retry_utils import (
-            retry_with_backoff, 
+        from infrastructure.resilience.retry_service import (
             RetryStatus, 
-            RETRIABLE_ERRORS, 
-            NON_RETRIABLE_ERRORS,
-            exponential_backoff_delay
+            exponential_backoff_delay,
+            get_retry_service,
+            RETRIABLE_ERRORS,
+            NON_RETRIABLE_ERRORS
         )
         print("✅ All retry utilities imported successfully")
     except ImportError as e:
@@ -75,9 +75,9 @@ def test_retry_implementation():
     # Test 5: Main app integration
     try:
         import streamlit as st
-        from core.langgraph_qa_chain import setup_qa_chain_with_memory, clean_response
+        from services.ai_service.qa_engine import get_qa_engine, clean_response
         import openai
-        from utils.retry_utils import retry_with_backoff, RetryStatus
+        from infrastructure.resilience.retry_service import RetryStatus, get_retry_service
         print("✅ Main app imports with retry logic working")
     except ImportError as e:
         print(f"❌ Main app integration import failed: {e}")

@@ -57,13 +57,13 @@ A sophisticated Retrieval-Augmented Generation (RAG) application powered by **La
 │   └── streamlit_helpers.py (133 lines)    # UI components & monitoring
 ├── 📄 documents/                      # Source materials
 │   └── traite_caracterologie.pdf     # René Le Senne's foundational text
-├── 🗄️ index_stores/                   # Vector databases
-│   ├── chroma.sqlite3                # ChromaDB metadata
-│   └── [collection_dirs]/            # Embedding vectors
+├── 🏗️ infrastructure/                 # Infrastructure layer
+│   └── database/                   # Data persistence layer
+│       ├── conversations/          # Chat service data
+│       └── vectorstores/           # AI service vector data
 ├── 🔧 .streamlit/                     # Streamlit configuration
 │   ├── secrets.toml.example          # Template for API keys
 │   └── secrets.toml                  # 🔒 Your actual secrets (git-ignored)
-└── 📊 conversations.db               # 🆕 LangGraph conversation persistence
 ```
 
 ## 🔧 Core System Components
@@ -189,7 +189,7 @@ Switch between vectorstore collections in real-time:
 ### **Conversation Analytics**
 Access detailed conversation metrics:
 ```python
-from utils.conversation_manager import get_conversation_summary
+from services.chat_service.conversation_manager import get_conversation_summary
 
 summary = get_conversation_summary("conversation 1")
 print(f"Messages: {summary['message_count']}")

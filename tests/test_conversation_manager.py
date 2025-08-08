@@ -4,7 +4,25 @@ Tests for conversation manager
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-import utils.conversation_manager as cm
+from services.chat_service.conversation_manager import (
+    ConversationManager, 
+    get_conversation_manager,
+    # Legacy compatibility functions
+    initialize_conversations,
+    get_conversation_names,
+    get_current_conversation,
+    set_current_conversation,
+    get_current_messages,
+    get_current_memory,
+    add_message,
+    create_new_conversation,
+    clear_conversation_memory,
+    should_show_welcome_message,
+    mark_welcome_shown,
+    set_pending_prompt,
+    get_pending_prompt,
+    process_templated_prompt
+)
 
 
 class MockSessionState:
@@ -46,8 +64,8 @@ class TestConversationManager:
         """Clean up test environment"""
         self.st_patcher.stop()
     
-    @patch('utils.conversation_manager.create_langgraph_memory_manager')
-    @patch('utils.conversation_manager.create_memory_manager')
+    @patch('services.chat_service.memory_repository.create_langgraph_memory_manager')
+    @patch('services.chat_service.memory_repository.create_memory_manager')
     def test_initialize_conversations(self, mock_create_memory, mock_create_langgraph):
         """Test conversation initialization"""
         # Setup mocks
@@ -59,7 +77,7 @@ class TestConversationManager:
         mock_create_memory.return_value = mock_memory
         
         # Initialize conversations
-        cm.initialize_conversations()
+        initialize_conversations()
         
         # Verify session state setup
         assert "langgraph_manager" in self.mock_session_state
@@ -93,7 +111,7 @@ class TestConversationManager:
             "test conversation": {}
         }
         
-        names = cm.get_conversation_names()
+        names = get_conversation_names()
         
         assert len(names) == 3
         assert "conversation 1" in names
@@ -104,7 +122,7 @@ class TestConversationManager:
         """Test getting current conversation"""
         self.mock_session_state["current_conversation"] = "test conversation"
         
-        current = cm.get_current_conversation()
+        current = get_current_conversation()
         
         assert current == "test conversation"
     
@@ -120,7 +138,7 @@ class TestConversationManager:
         mock_manager = Mock()
         self.mock_session_state["langgraph_manager"] = mock_manager
         
-        cm.set_current_conversation("conversation 2")
+        set_current_conversation("conversation 2")
         
         assert self.mock_session_state["current_conversation"] == "conversation 2"
         mock_manager.set_current_thread.assert_called_once_with("thread-2")
@@ -135,7 +153,7 @@ class TestConversationManager:
         self.mock_session_state["langgraph_manager"] = mock_manager
         
         # Should not change anything for invalid conversation
-        cm.set_current_conversation("nonexistent")
+        set_current_conversation("nonexistent")
         
         mock_manager.set_current_thread.assert_not_called()
     
@@ -151,7 +169,7 @@ class TestConversationManager:
             }
         }
         
-        messages = cm.get_current_messages()
+        messages = get_current_messages()
         
         assert len(messages) == 2
         assert messages[0]["content"] == "Hello"
@@ -172,14 +190,14 @@ class TestConversationManager:
         }
         self.mock_session_state["langgraph_manager"] = mock_manager
         
-        memory = cm.get_current_memory()
+        memory = get_current_memory()
         
         assert memory == mock_memory
         mock_manager.set_current_thread.assert_called_once_with("thread-1")
         
         # Test memory manager thread update
         mock_memory.manager = Mock()
-        memory = cm.get_current_memory()
+        memory = get_current_memory()
         mock_memory.manager.set_current_thread.assert_called_once_with("thread-1")
     
     def test_add_message(self):
@@ -189,14 +207,14 @@ class TestConversationManager:
             "conversation 1": {"messages": []}
         }
         
-        cm.add_message("user", "Hello world")
+        add_message("user", "Hello world")
         
         messages = self.mock_session_state["conversations"]["conversation 1"]["messages"]
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
         assert messages[0]["content"] == "Hello world"
     
-    @patch('utils.conversation_manager.create_memory_manager')
+    @patch('services.chat_service.memory_repository.create_memory_manager')
     def test_create_new_conversation(self, mock_create_memory):
         """Test creating new conversation"""
         # Setup existing conversations
@@ -212,7 +230,7 @@ class TestConversationManager:
         mock_manager.create_conversation.return_value = "new-thread-id"
         self.mock_session_state["langgraph_manager"] = mock_manager
         
-        new_name = cm.create_new_conversation()
+        new_name = create_new_conversation()
         
         assert new_name == "conversation 2"
         assert new_name in self.mock_session_state["conversations"]
@@ -249,7 +267,7 @@ class TestConversationManager:
         mock_manager.current_thread_id = "thread-1"
         self.mock_session_state["langgraph_manager"] = mock_manager
         
-        cm.clear_conversation_memory()
+        clear_conversation_memory()
         
         conversation = self.mock_session_state["conversations"]["conversation 1"]
         assert conversation["messages"] == []
@@ -270,18 +288,18 @@ class TestConversationManager:
         }
         
         # Should show welcome for empty conversation
-        assert cm.should_show_welcome_message() is True
+        assert should_show_welcome_message() is True
         
         # Should not show if messages exist
         self.mock_session_state["conversations"]["conversation 1"]["messages"] = [
             {"role": "user", "content": "Hello"}
         ]
-        assert cm.should_show_welcome_message() is False
+        assert should_show_welcome_message() is False
         
         # Should not show if already shown
         self.mock_session_state["conversations"]["conversation 1"]["messages"] = []
         self.mock_session_state["conversations"]["conversation 1"]["welcome_shown"] = True
-        assert cm.should_show_welcome_message() is False
+        assert should_show_welcome_message() is False
     
     def test_mark_welcome_shown(self):
         """Test marking welcome as shown"""
@@ -290,7 +308,7 @@ class TestConversationManager:
             "conversation 1": {"welcome_shown": False}
         }
         
-        cm.mark_welcome_shown()
+        mark_welcome_shown()
         
         assert self.mock_session_state["conversations"]["conversation 1"]["welcome_shown"] is True
     
@@ -299,19 +317,19 @@ class TestConversationManager:
         self.mock_session_state["pending_prompt"] = None
         
         # Test setting pending prompt
-        cm.set_pending_prompt("Test prompt")
+        set_pending_prompt("Test prompt")
         assert self.mock_session_state["pending_prompt"] == "Test prompt"
         
         # Test getting and clearing pending prompt
-        prompt = cm.get_pending_prompt()
+        prompt = get_pending_prompt()
         assert prompt == "Test prompt"
         assert self.mock_session_state["pending_prompt"] is None
         
         # Test getting when no prompt pending
-        prompt = cm.get_pending_prompt()
+        prompt = get_pending_prompt()
         assert prompt is None
     
-    @patch('utils.conversation_manager.st.rerun')
+    @patch('services.chat_service.conversation_manager.st.rerun')
     def test_process_templated_prompt(self, mock_rerun):
         """Test processing templated prompt"""
         self.mock_session_state["current_conversation"] = "conversation 1"
@@ -320,7 +338,7 @@ class TestConversationManager:
         }
         self.mock_session_state["pending_prompt"] = None
         
-        cm.process_templated_prompt("Test templated prompt")
+        process_templated_prompt("Test templated prompt")
         
         # Should mark welcome as shown
         assert self.mock_session_state["conversations"]["conversation 1"]["welcome_shown"] is True
