@@ -13,6 +13,8 @@ class ProductionConfig(AppConfig):
     """Production environment configuration"""
     
     def __post_init__(self):
+        # Call parent initialization first to load API keys
+        super().__init__()
         
         # Production-specific overrides
         self.environment = "production"
