@@ -49,8 +49,14 @@ Thumbs.db
 *.log
 logs/
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Database files (infrastructure data layer)
+infrastructure/database/conversations/*.db
+infrastructure/database/conversations/*.sqlite
+infrastructure/database/conversations/*.sqlite3
+infrastructure/database/auth/*.db
+infrastructure/database/auth/*.sqlite
+infrastructure/database/auth/*.sqlite3
+
+# Vector stores (large, regenerable data in infrastructure)
+infrastructure/database/vectorstores/
 

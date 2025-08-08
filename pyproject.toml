@@ -133,10 +133,8 @@ markers = [
     "qa: QA chain tests",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning:config.settings",
-    "ignore::DeprecationWarning:config.welcome_config",
     "ignore::UserWarning:streamlit",
-    "ignore::LangChainDeprecationWarning",
+    "ignore::DeprecationWarning:langchain",
 ]
 
 [tool.coverage.run]

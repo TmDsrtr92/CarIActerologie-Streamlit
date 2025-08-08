@@ -5,7 +5,7 @@ Test chunks display functionality
 import pytest
 from unittest.mock import Mock, patch
 from langchain_core.documents import Document
-from utils.chunks_display import ChunksCollector, render_chunks_component, render_simple_chunks_list
+from services.ui_service.chunks_renderer import ChunksCollector, render_chunks_component, render_simple_chunks_list
 
 
 class TestChunksCollector:

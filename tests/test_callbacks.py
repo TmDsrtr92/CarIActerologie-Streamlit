@@ -5,8 +5,8 @@ Test callback handlers functionality
 import pytest
 from unittest.mock import Mock, patch
 from langchain_core.documents import Document
-from core.callbacks import RetrievalCallbackHandler, StreamlitCallbackHandler
-from utils.chunks_display import ChunksCollector
+from services.ui_service.callback_handlers import RetrievalCallbackHandler, StreamlitCallbackHandler
+from services.ui_service.chunks_renderer import ChunksCollector
 
 
 class TestRetrievalCallbackHandler:

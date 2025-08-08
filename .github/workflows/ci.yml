@@ -61,14 +61,14 @@ jobs:
 
     - name: Test configuration loading
       run: |
-        python -c "from config.app_config import get_config; config = get_config(); print('✅ Config loads successfully')"
+        python -c "from infrastructure.config.settings import get_config; config = get_config(); print('✅ Config loads successfully')"
 
     - name: Test imports
       run: |
         python -c "
-        from core.llm_setup import setup_llm, setup_embeddings;
-        from utils.chunks_display import ChunksCollector;
-        from core.callbacks import RetrievalCallbackHandler;
+        from services.ai_service.llm_client import get_llm_client;
+        from services.ui_service.chunks_renderer import ChunksCollector;
+        from services.ui_service.callback_handlers import RetrievalCallbackHandler;
         print('✅ All imports successful')
         "
 

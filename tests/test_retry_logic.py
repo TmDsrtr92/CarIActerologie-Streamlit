@@ -7,7 +7,7 @@ sys.path.append('.')
 
 import openai
 import time
-from utils.retry_utils import retry_with_backoff, RetryStatus
+from infrastructure.resilience.retry_service import RetryStatus, get_retry_service
 
 def simulate_api_calls():
     """Simulate different API error scenarios"""
@@ -70,7 +70,7 @@ def simulate_api_calls():
     
     # Test 4: Exponential backoff delays
     print("4. Testing exponential backoff delays:")
-    from utils.retry_utils import exponential_backoff_delay
+    from infrastructure.resilience.retry_service import exponential_backoff_delay
     
     for attempt in range(4):
         delay = exponential_backoff_delay(attempt, base_delay=1.0)

@@ -35,10 +35,10 @@ jobs:
 
     - name: Run pre-deployment tests
       run: |
-        python -c "from config.app_config import get_config; print('✅ Config validation passed')"
+        python -c "from infrastructure.config.settings import get_config; print('✅ Config validation passed')"
         python -c "
         import streamlit as st
-        from core.llm_setup import setup_llm, setup_embeddings
+        from services.ai_service.llm_client import get_llm_client
         print('✅ Core imports successful')
         "
 
