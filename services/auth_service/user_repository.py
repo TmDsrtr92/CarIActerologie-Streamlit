@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import bcrypt
 
 from services.auth_service.models import User, UserSession
-from infrastructure.config.settings import get_config
+from infrastructure.config.settings import get_config, is_streamlit_cloud
 from infrastructure.monitoring.logging_service import get_logger
 
 
@@ -30,7 +30,19 @@ class UserRepository:
         """
         self.logger = get_logger(__name__)
         config = get_config()
-        self.db_path = db_path or "infrastructure/database/auth/users.db"
+        
+        # Check if running on Streamlit Cloud
+        self.is_cloud = is_streamlit_cloud()
+        
+        if self.is_cloud:
+            # Use in-memory database for Streamlit Cloud
+            self.db_path = ":memory:"
+            self.logger.info("Running on Streamlit Cloud - using in-memory database")
+        else:
+            # Use file-based database for local development
+            self.db_path = db_path or "infrastructure/database/auth/users.db"
+            self.logger.info(f"Using file-based database: {self.db_path}")
+        
         self.session_timeout_hours = 24  # Session expires after 24 hours
         
         self._init_database()
@@ -130,6 +142,10 @@ class UserRepository:
         conn.commit()
         conn.close()
         
+        # Create default guest user for cloud environment
+        if self.is_cloud:
+            self._create_default_guest_user()
+        
         self.logger.info("User database initialized")
     
     def _run_migrations(self, cursor):
@@ -155,6 +171,39 @@ class UserRepository:
     def _verify_password(self, password: str, hashed: str) -> bool:
         """Verify password against hash"""
         return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    
+    def _create_default_guest_user(self):
+        """Create a default guest user for cloud environment"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check if guest user already exists
+            cursor.execute("SELECT user_id FROM users WHERE username = 'guest'")
+            if cursor.fetchone():
+                conn.close()
+                return
+            
+            # Create guest user
+            user_id = str(uuid.uuid4())
+            guest_password = "guest123"  # Simple password for guest
+            password_hash = self._hash_password(guest_password)
+            created_at = datetime.now().isoformat()
+            
+            cursor.execute("""
+                INSERT INTO users (user_id, username, email, full_name, password_hash, 
+                                 role, created_at, is_active, preferences)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, "guest", "guest@cloud.local", "Guest User", password_hash,
+                  "user", created_at, True, "{}"))
+            
+            conn.commit()
+            conn.close()
+            
+            self.logger.info("Default guest user created for cloud environment")
+            
+        except Exception as e:
+            self.logger.error(f"Error creating default guest user: {e}")
     
     def create_user(self, username: str, email: str, full_name: str, 
                    password: str, role: str = "user") -> Optional[User]:

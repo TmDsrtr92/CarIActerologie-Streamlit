@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from services.auth_service.user_repository import get_user_repository
 from services.auth_service.models import User, UserSession
 from infrastructure.monitoring.logging_service import get_logger
-from infrastructure.config.settings import get_config
+from infrastructure.config.settings import get_config, is_streamlit_cloud
 
 
 class AuthManager:
@@ -27,6 +27,7 @@ class AuthManager:
         self.logger = get_logger(__name__)
         self.config = get_config()
         self.cookie_name = "streamlit_session_id"
+        self.is_cloud = is_streamlit_cloud()
     
     def require_authentication(self, page_func: Callable):
         """
@@ -39,6 +40,10 @@ class AuthManager:
         if not self.config.auth.enabled:
             return page_func()
         
+        # Auto-login as guest in cloud environment
+        if self.is_cloud and not self.get_current_session():
+            self._auto_login_guest()
+        
         # Check for existing session
         current_session = self.get_current_session()
         
@@ -46,7 +51,7 @@ class AuthManager:
             # User is authenticated, call the page function
             return page_func()
         else:
-            # Show login form
+            # Show login form (local environment only)
             return self.render_login_form()
     
     def get_current_session(self) -> Optional[UserSession]:
@@ -208,6 +213,18 @@ class AuthManager:
         except Exception as e:
             self.logger.error(f"Error during logout: {e}")
             return False
+    
+    def _auto_login_guest(self):
+        """Auto-login as guest user for cloud environment"""
+        try:
+            # Attempt to login with default guest credentials
+            success = self.login("guest", "guest123")
+            if success:
+                self.logger.info("Auto-logged in as guest user for cloud environment")
+            else:
+                self.logger.warning("Failed to auto-login as guest user")
+        except Exception as e:
+            self.logger.error(f"Error during guest auto-login: {e}")
     
     def clear_session(self):
         """Clear session data from Streamlit session state"""
