@@ -13,17 +13,6 @@ import os
 from pathlib import Path
 
 
-def is_streamlit_cloud() -> bool:
-    """Detect if running on Streamlit Cloud"""
-    # Streamlit Cloud sets specific environment variables
-    return (
-        os.getenv("STREAMLIT_SHARING_MODE") == "True" or
-        os.getenv("STREAMLIT_CLOUD") == "True" or 
-        "/mount/src/" in os.getcwd() or
-        "adminuser" in os.path.expanduser("~")
-    )
-
-
 @dataclass
 class APIConfig:
     """API configuration settings"""
@@ -264,14 +253,6 @@ class AppConfig:
         elif config.environment == "development":
             config.debug = True
             config.logging.level = "DEBUG"
-        
-        # Cloud-specific overrides
-        if is_streamlit_cloud():
-            config.environment = "cloud"
-            config.debug = False
-            config.logging.level = "INFO"
-            config.auth.enabled = True  # Keep auth enabled but use guest mode
-            config.langgraph.db_path = ":memory:"  # Use in-memory for conversations too
         
         return config
     
