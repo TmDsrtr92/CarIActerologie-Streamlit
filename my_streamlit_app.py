@@ -1,41 +1,35 @@
 import streamlit as st
-from core.langgraph_qa_chain import setup_qa_chain_with_memory, clean_response
 # Import OpenAI exceptions for specific error handling
 import openai
-from utils.logging_config import initialize_logging, get_logger, log_user_interaction, get_error_tracker, log_execution_time
-from utils.retry_utils import retry_with_circuit_breaker, RetryStatus, CircuitBreakerError, get_openai_circuit_breaker
-from utils.fallback_responses import generate_fallback_response, get_fallback_system
-from utils.conversation_manager import (
-    initialize_conversations, 
-    get_current_messages, 
-    add_message,
-    get_current_memory,
-    should_show_welcome_message,
-    get_pending_prompt,
-    get_current_conversation
-)
-from utils.streamlit_helpers import (
-    get_langfuse_handler, 
-    create_stream_handler, 
-    render_conversation_sidebar, 
-    render_chat_messages,
-    render_welcome_message,
-    get_selected_collection
-)
-from core.callbacks import RetrievalCallbackHandler
-from utils.chunks_display import ChunksCollector
-from auth.streamlit_auth import get_auth
-from config.app_config import get_config
 
-# Initialize logging and error tracking
-error_tracker = initialize_logging()
-logger = get_logger(__name__)
+# Microservices imports
+from services.ai_service.qa_engine import get_qa_engine
+from services.ai_service.models import QARequest
+# Removed auth system - using simple user session instead
+from services.chat_service.conversation_manager import get_conversation_manager
+from services.ui_service.chat_interface import get_chat_interface
+from infrastructure.config.settings import get_config
+from infrastructure.monitoring.logging_service import get_logger
 
-# Get configuration
+# Infrastructure and service imports
+from infrastructure.resilience.retry_service import retry_with_circuit_breaker, RetryStatus, CircuitBreakerError, get_openai_circuit_breaker
+from services.ai_service.fallback_service import generate_fallback_response, get_fallback_system
+from services.ui_service.callback_handlers import RetrievalCallbackHandler
+from services.ui_service.chunks_renderer import ChunksCollector
+
+# Initialize microservices
 config = get_config()
+logger = get_logger(__name__)
+# Replaced complex auth system with simple session-based user tracking
+from services.simple_user_session import get_simple_user_session
+user_session = get_simple_user_session()
+conversation_manager = get_conversation_manager()
+chat_interface = get_chat_interface()
+qa_engine = get_qa_engine()
 
-# Initialize authentication
-auth = get_auth()
+# Legacy compatibility
+from infrastructure.monitoring.logging_service import get_error_tracker, log_user_interaction, log_execution_time
+error_tracker = get_error_tracker()
 
 def main_app():
     """Main application content (protected by authentication)"""
@@ -100,7 +94,7 @@ def main_app():
     # Initialize conversations with loading state
     try:
         with st.status("Initializing conversations...", expanded=False) as status:
-            initialize_conversations()
+            conversation_manager.initialize_conversations()
             status.update(label="✅ Conversations loaded", state="complete")
         logger.info("Conversations initialized successfully")
     except Exception as e:
@@ -109,32 +103,32 @@ def main_app():
         return
 
     # Set up Langfuse handler
-    langfuse_handler = get_langfuse_handler()
+    langfuse_handler = chat_interface.get_langfuse_handler()
 
     # Render conversation sidebar
-    render_conversation_sidebar()
+    chat_interface.render_conversation_sidebar()
 
     # Get current conversation messages and memory
-    messages = get_current_messages()
-    current_memory = get_current_memory()
+    messages = conversation_manager.get_current_messages()
+    current_memory = conversation_manager.get_current_memory()
 
     # Get selected collection
-    selected_collection = get_selected_collection()
+    selected_collection = chat_interface.get_selected_collection()
 
-    # Set up QA chain with memory and selected collection
+    # Set up QA system
     with st.spinner(f"Setting up AI system with {selected_collection} collection..."):
-        qa_chain = setup_qa_chain_with_memory(current_memory, collection_key=selected_collection)
+        pass  # QA engine is already initialized
 
     # Show welcome message if this is a new conversation
-    if should_show_welcome_message():
-        render_welcome_message()
+    if conversation_manager.should_show_welcome_message():
+        chat_interface.render_welcome_message()
 
     # Always render existing chat messages (if any)
     if messages:
-        render_chat_messages(messages)
+        chat_interface.render_chat_messages(messages)
 
     # Check for pending prompt from welcome buttons
-    pending_prompt = get_pending_prompt()
+    pending_prompt = conversation_manager.get_pending_prompt()
 
     # Determine which input to process
     prompt_input = pending_prompt  # Only use pending prompt if it exists
@@ -150,11 +144,11 @@ def main_app():
                 logger, 
                 "query_submitted", 
                 query_length=len(prompt_input),
-                conversation=get_current_conversation()
+                conversation=conversation_manager.get_current_conversation()
             )
             
             # Add user message to conversation
-            add_message("user", prompt_input)
+            conversation_manager.add_message("user", prompt_input)
             
             # Display user message
             user_msg = st.chat_message("user")
@@ -173,7 +167,7 @@ def main_app():
                     st.write("🧠 Generating response...")
             
             # Create streaming handler
-            stream_handler = create_stream_handler(stream_placeholder)
+            stream_handler = chat_interface.create_stream_handler(stream_placeholder)
             
             # Create retrieval callback handler with memory and chunks collector
             retrieval_handler = RetrievalCallbackHandler(memory=current_memory, chunks_collector=chunks_collector)
@@ -191,14 +185,20 @@ def main_app():
                         if langfuse_handler is not None:
                             callbacks.insert(0, langfuse_handler)
                         
-                        return qa_chain.invoke(
-                            {"question": prompt_input},
-                            config={"callbacks": callbacks}
+                        # Create QA request
+                        request = QARequest(
+                            question=prompt_input,
+                            collection_key=selected_collection,
+                            chat_history=current_memory.get_chat_history()
                         )
+                        
+                        # Use QA engine instead of direct chain
+                        response = qa_engine.process_question(request, callbacks)
+                        return {"answer": response.answer}
                 
                 def on_retry_callback(attempt: int, error: Exception):
                     """Show retry status to user"""
-                    from utils.retry_utils import exponential_backoff_delay
+                    from infrastructure.resilience.retry_service import exponential_backoff_delay
                     next_delay = exponential_backoff_delay(attempt - 1)  # attempt is 1-indexed in callback
                     
                     retry_status.on_retry_attempt(attempt, error, next_delay)
@@ -231,8 +231,8 @@ def main_app():
             answer = result["answer"]
             # Note: source_documents not available with memory-enabled chain
 
-            # Clean the response to remove any repetition of the user's question
-            cleaned_answer = clean_response(answer, prompt_input)
+            # Use the cleaned answer from QA engine
+            cleaned_answer = answer
 
             # Display final response (remove cursor and any retry messages)
             stream_placeholder.markdown(cleaned_answer)
@@ -241,12 +241,12 @@ def main_app():
             chunks_collector.render_if_available()
 
             # Add assistant message to conversation
-            add_message("assistant", cleaned_answer)
+            conversation_manager.add_message("assistant", cleaned_answer)
             
             # Log successful response
             logger.info("Response generated successfully", extra={
                 "response_length": len(cleaned_answer),
-                "conversation": get_current_conversation()
+                "conversation": conversation_manager.get_current_conversation()
             })
             
         except CircuitBreakerError as e:
@@ -288,7 +288,7 @@ def main_app():
                 chunks_collector.render_if_available()
                 
                 # Add fallback message to conversation history  
-                add_message("assistant", complete_response)
+                conversation_manager.add_message("assistant", complete_response)
                 
                 logger.info(f"Provided fallback response for circuit breaker open (question: {prompt_input[:50]}...)")
                 
@@ -356,23 +356,10 @@ def main_app():
     manual_prompt = st.chat_input("Comment puis-je t'aider aujourd'hui ?")
     if manual_prompt:
         # Process manual input by setting it as pending and rerunning
-        from utils.conversation_manager import set_pending_prompt
-        set_pending_prompt(manual_prompt)
+        conversation_manager.set_pending_prompt(manual_prompt)
         st.rerun()
 
 
-# Apply authentication wrapper
-if config.auth.enabled:
-    # Render user menu in sidebar if authenticated
-    current_session = auth.get_current_session()
-    if current_session:
-        auth.render_user_menu()
-    
-    # Apply authentication requirement
-    auth.require_authentication(main_app)
-    
-    # Render user settings dialog if needed
-    auth.render_user_settings()
-else:
-    # Authentication disabled, run main app directly
-    main_app()
+# Simple user session - no authentication required
+user_session.render_user_info_sidebar()
+main_app()

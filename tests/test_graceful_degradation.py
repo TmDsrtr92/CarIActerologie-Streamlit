@@ -5,7 +5,7 @@ Test script to demonstrate graceful degradation functionality
 import sys
 sys.path.append('.')
 
-from utils.fallback_responses import get_fallback_system, generate_fallback_response
+from services.ai_service.fallback_service import get_fallback_system, generate_fallback_response
 
 def demonstrate_fallback_responses():
     """Demonstrate different types of fallback responses"""

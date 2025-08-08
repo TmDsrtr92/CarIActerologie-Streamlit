@@ -4,9 +4,9 @@ Test environment-specific configurations
 
 import os
 import pytest
-from config.environments import get_environment_config
-from config.environments.development import get_development_config
-from config.environments.production import get_production_config
+from infrastructure.config.environments import get_environment_config
+from infrastructure.config.environments.development import get_development_config
+from infrastructure.config.environments.production import get_production_config
 
 
 class TestEnvironmentConfigs:

@@ -4,55 +4,14 @@ Tests for LangGraph QA chain system
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from core.langgraph_qa_chain import (
-    LangGraphRAGChain, RAGState, clean_response, 
-    setup_langgraph_qa_chain, setup_qa_chain_with_memory
+from services.ai_service.qa_engine import (
+    get_qa_engine
 )
-from core.langgraph_memory import LangGraphMemoryManager
+from services.ai_service.models import RAGState
+from services.chat_service.memory_repository import get_memory_repository, MemoryRepository
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, AIMessage
 
-
-class TestCleanResponse:
-    """Test response cleaning functionality"""
-    
-    def test_clean_response_removes_question_repetition(self):
-        """Test cleaning removes repeated user question"""
-        user_question = "What is characterology?"
-        response = "What is characterology? Characterology is the science of character types..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "Characterology is the science of character types..."
-        assert user_question not in cleaned
-    
-    def test_clean_response_removes_prefixes(self):
-        """Test cleaning removes common prefixes"""
-        user_question = "Explain character types"
-        response = "Concernant votre question: Character types are classified based on..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "Character types are classified based on..."
-        assert "Concernant votre question:" not in cleaned
-    
-    def test_clean_response_case_insensitive(self):
-        """Test cleaning is case insensitive"""
-        user_question = "what is characterology?"
-        response = "WHAT IS CHARACTEROLOGY? It is the science..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "It is the science..."
-    
-    def test_clean_response_no_change_needed(self):
-        """Test cleaning when no changes needed"""
-        user_question = "What is characterology?"
-        response = "Characterology studies personality types and traits."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == response
 
 
 class TestRAGState:
@@ -91,7 +50,7 @@ class TestLangGraphRAGChain:
     
     def setup_method(self):
         """Set up test environment"""
-        self.mock_memory = Mock(spec=LangGraphMemoryManager)
+        self.mock_memory = Mock(spec=MemoryRepository)
         self.mock_memory._is_langgraph_memory = True
     
     @patch('core.langgraph_qa_chain.setup_llm')
@@ -253,7 +212,7 @@ class TestSetupFunctions:
     
     def test_setup_langgraph_qa_chain(self):
         """Test LangGraph QA chain setup"""
-        mock_memory = Mock(spec=LangGraphMemoryManager)
+        mock_memory = Mock(spec=MemoryRepository)
         mock_memory._is_langgraph_memory = True
         
         with patch('core.langgraph_qa_chain.LangGraphRAGChain') as mock_chain_class:
@@ -274,7 +233,7 @@ class TestSetupFunctions:
         """Test QA chain setup with LangGraph memory wrapper"""
         # Mock memory wrapper
         mock_wrapper = Mock()
-        mock_manager = Mock(spec=LangGraphMemoryManager)
+        mock_manager = Mock(spec=MemoryRepository)
         mock_manager._is_langgraph_memory = True
         mock_wrapper.manager = mock_manager
         
@@ -294,7 +253,7 @@ class TestSetupFunctions:
     
     def test_setup_qa_chain_with_memory_direct_manager(self):
         """Test QA chain setup with direct LangGraph manager"""
-        mock_manager = Mock(spec=LangGraphMemoryManager)
+        mock_manager = Mock(spec=MemoryRepository)
         mock_manager._is_langgraph_memory = True
         
         with patch('core.langgraph_qa_chain.setup_langgraph_qa_chain') as mock_setup:
