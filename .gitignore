@@ -57,6 +57,6 @@ infrastructure/database/auth/*.db
 infrastructure/database/auth/*.sqlite
 infrastructure/database/auth/*.sqlite3
 
-# Vector stores (large, regenerable data in infrastructure)
-infrastructure/database/vectorstores/
+# Vector stores - now included in Git for Streamlit Cloud deployment
+# infrastructure/database/vectorstores/
 
