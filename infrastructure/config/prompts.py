@@ -6,12 +6,10 @@ Moved to infrastructure layer for microservices architecture.
 from langchain.prompts import PromptTemplate
 from langfuse import Langfuse
 from infrastructure.config.settings import get_langfuse_config
-from services.ai_service.domain_content import get_traite_summary
 import streamlit as st
 
 def _get_fallback_system_prompt():
-    """Get fallback system prompt with domain content"""
-    traite_content = get_traite_summary()
+    """Get fallback system prompt without domain content to avoid circular imports"""
     return f"""
 Tu es un assistant caractérologue expert, à la fois pédagogue et curieux. Ton rôle est de faire découvrir la caractérologie — la science des types de caractère — de manière à la fois précise, vivante et accessible.
 
@@ -32,9 +30,6 @@ Tu integrera dans ta réflexion, quand c'est pertinent, les éléments suivants:
 
     {{question}} – question de l'utilisateur
 
-    Résumé du Traité de caractérologie :
-    {traite_content}
-
 """
 
 # Fallback prompt if Langfuse is unavailable
@@ -43,55 +38,19 @@ FALLBACK_SYSTEM_PROMPT = _get_fallback_system_prompt()
 @st.cache_data(ttl=60)  # Cache for 1 minute during testing
 def get_langfuse_prompt(prompt_name: str = "caracterologie_qa", version: int = None):
     """
-    Get prompt from Langfuse prompt management
+    Get prompt from Langfuse prompt management - DISABLED for simplicity
+    
+    Always returns fallback prompt to avoid external dependencies and deployment issues.
     
     Args:
-        prompt_name: Name of the prompt in Langfuse
-        version: Specific version (optional, uses latest if None)
+        prompt_name: Name of the prompt in Langfuse (ignored)
+        version: Specific version (ignored)
     
     Returns:
-        str: Prompt template from Langfuse or fallback
+        str: Fallback prompt template
     """
-    try:
-        config = get_langfuse_config()
-        
-        # Check if Langfuse keys are available
-        if not config["secret_key"] or not config["public_key"]:
-            raise ValueError("Langfuse keys not configured")
-        
-        langfuse = Langfuse(
-            secret_key=config["secret_key"],
-            public_key=config["public_key"],
-            host=config["host"]
-        )
-        
-        # Get prompt from Langfuse
-        if version:
-            prompt = langfuse.get_prompt(prompt_name, version=version)
-        else:
-            prompt = langfuse.get_prompt(prompt_name)
-        
-        # Replace traite summary placeholder with actual content
-        prompt_text = prompt.prompt
-        if "{TRAITE_SUMMARY}" in prompt_text:
-            traite_content = get_traite_summary()
-            prompt_text = prompt_text.replace("{TRAITE_SUMMARY}", traite_content)
-        
-        # Ensure the prompt has the required placeholders
-        if "{context}" not in prompt_text:
-            prompt_text += "\n\nContext: {context}"
-        if "{question}" not in prompt_text:
-            prompt_text += "\n\nQuestion: {question}"
-            
-        return prompt_text
-        
-    except Exception as e:
-        if "keys not configured" in str(e):
-            # Silently use fallback when keys are not configured (expected in some environments)
-            return FALLBACK_SYSTEM_PROMPT
-        else:
-            st.warning(f"Could not fetch prompt from Langfuse: {e}. Using fallback prompt.")
-            return FALLBACK_SYSTEM_PROMPT
+    # Always use fallback prompt to avoid Langfuse dependency issues
+    return FALLBACK_SYSTEM_PROMPT
 
 def get_qa_prompt(prompt_name: str = "caracterologie_qa", version: int = None):
     """Get the QA prompt template from Langfuse or fallback"""
