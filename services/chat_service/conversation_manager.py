@@ -507,6 +507,12 @@ def should_show_welcome_message():
     return manager.should_show_welcome_message()
 
 
+def mark_welcome_shown():
+    """Mark welcome message as shown (legacy compatibility)"""
+    manager = get_conversation_manager()
+    manager.mark_welcome_shown()
+
+
 def get_pending_prompt():
     """Get pending prompt and clear it (legacy compatibility)"""
     manager = get_conversation_manager()

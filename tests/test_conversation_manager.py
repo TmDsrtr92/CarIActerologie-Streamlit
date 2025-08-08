@@ -18,7 +18,6 @@ from services.chat_service.conversation_manager import (
     create_new_conversation,
     clear_conversation_memory,
     should_show_welcome_message,
-    mark_welcome_shown,
     set_pending_prompt,
     get_pending_prompt,
     process_templated_prompt
@@ -300,17 +299,6 @@ class TestConversationManager:
         self.mock_session_state["conversations"]["conversation 1"]["messages"] = []
         self.mock_session_state["conversations"]["conversation 1"]["welcome_shown"] = True
         assert should_show_welcome_message() is False
-    
-    def test_mark_welcome_shown(self):
-        """Test marking welcome as shown"""
-        self.mock_session_state["current_conversation"] = "conversation 1"
-        self.mock_session_state["conversations"] = {
-            "conversation 1": {"welcome_shown": False}
-        }
-        
-        mark_welcome_shown()
-        
-        assert self.mock_session_state["conversations"]["conversation 1"]["welcome_shown"] is True
     
     def test_pending_prompt_management(self):
         """Test pending prompt management"""

@@ -75,7 +75,7 @@ def test_retry_implementation():
     # Test 5: Main app integration
     try:
         import streamlit as st
-        from services.ai_service.qa_engine import get_qa_engine, clean_response
+        from services.ai_service.qa_engine import get_qa_engine
         import openai
         from infrastructure.resilience.retry_service import RetryStatus, get_retry_service
         print("✅ Main app imports with retry logic working")

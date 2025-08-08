@@ -5,54 +5,13 @@ Tests for LangGraph QA chain system
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from services.ai_service.qa_engine import (
-    get_qa_engine, clean_response
+    get_qa_engine
 )
 from services.ai_service.models import RAGState
 from services.chat_service.memory_repository import get_memory_repository
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, AIMessage
 
-
-class TestCleanResponse:
-    """Test response cleaning functionality"""
-    
-    def test_clean_response_removes_question_repetition(self):
-        """Test cleaning removes repeated user question"""
-        user_question = "What is characterology?"
-        response = "What is characterology? Characterology is the science of character types..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "Characterology is the science of character types..."
-        assert user_question not in cleaned
-    
-    def test_clean_response_removes_prefixes(self):
-        """Test cleaning removes common prefixes"""
-        user_question = "Explain character types"
-        response = "Concernant votre question: Character types are classified based on..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "Character types are classified based on..."
-        assert "Concernant votre question:" not in cleaned
-    
-    def test_clean_response_case_insensitive(self):
-        """Test cleaning is case insensitive"""
-        user_question = "what is characterology?"
-        response = "WHAT IS CHARACTEROLOGY? It is the science..."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == "It is the science..."
-    
-    def test_clean_response_no_change_needed(self):
-        """Test cleaning when no changes needed"""
-        user_question = "What is characterology?"
-        response = "Characterology studies personality types and traits."
-        
-        cleaned = clean_response(response, user_question)
-        
-        assert cleaned == response
 
 
 class TestRAGState:
