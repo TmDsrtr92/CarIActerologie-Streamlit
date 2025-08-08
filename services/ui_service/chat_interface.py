@@ -53,33 +53,9 @@ class ChatInterface:
             # Enhanced sidebar header
             st.markdown("## 💬 Conversations")
             
-            # Add conversation search
-            search_query = st.text_input("🔍 Search conversations", placeholder="Search by title or content...")
-            
-            # Filter conversations based on search
-            if search_query:
-                filtered_conversations = self._filter_conversations(conversation_names, search_query)
-                display_conversations = filtered_conversations
-                st.caption(f"🔍 {len(filtered_conversations)} of {len(conversation_names)} conversations")
-            else:
-                display_conversations = conversation_names
-                st.caption(f"📊 {len(conversation_names)} conversation{'s' if len(conversation_names) != 1 else ''}")
-            
-            # Add filter options
-            with st.expander("🎯 Filters", expanded=False):
-                col1, col2 = st.columns(2)
-                with col1:
-                    show_recent = st.checkbox("Recent only", value=False, help="Show only recent conversations")
-                with col2:
-                    sort_by = st.selectbox("Sort by", ["Date", "Name"], index=0)
-            
-            # Apply filters
-            if show_recent:
-                # Show only last 10 conversations
-                display_conversations = display_conversations[:10]
-            
-            if sort_by == "Name":
-                display_conversations = sorted(display_conversations)
+            # Simple conversation list - no search or filters
+            st.caption(f"📊 {len(conversation_names)} conversation{'s' if len(conversation_names) != 1 else ''}")
+            display_conversations = conversation_names
             
             # Conversation list
             st.markdown("### Select Conversation")
@@ -182,38 +158,7 @@ class ChatInterface:
             elif memory_percentage > 95:
                 st.error("🚨 Memory nearly full - performance may be affected")
             
-            # Conversation management
-            st.markdown("### ⚙️ Actions")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🗑️ Clear", help="Clear current conversation", use_container_width=True):
-                    self.conversation_manager.clear_conversation_memory()
-                    st.success("🗑️ Conversation cleared!")
-                    st.rerun()
-            
-            with col2:
-                if st.button("📝 Rename", help="Rename current conversation", use_container_width=True):
-                    st.session_state.show_rename_dialog = True
-            
-            # Rename dialog
-            if st.session_state.get("show_rename_dialog", False):
-                with st.form("rename_conversation"):
-                    new_title = st.text_input("New conversation title:", value=current_conversation)
-                    col_submit, col_cancel = st.columns(2)
-                    
-                    with col_submit:
-                        if st.form_submit_button("Save", use_container_width=True):
-                            if new_title.strip():
-                                self.conversation_manager.update_conversation_title(current_conversation, new_title.strip())
-                                st.session_state.show_rename_dialog = False
-                                st.success("Conversation renamed!")
-                                st.rerun()
-                    
-                    with col_cancel:
-                        if st.form_submit_button("Cancel", use_container_width=True):
-                            st.session_state.show_rename_dialog = False
-                            st.rerun()
+            # Removed Actions section - no clear or rename functionality
             
             # Circuit breaker and error status
             self._render_system_status()
@@ -297,24 +242,7 @@ class ChatInterface:
         
         return st.session_state.selected_collection
     
-    def _filter_conversations(self, conversation_names: List[str], search_query: str) -> List[str]:
-        """Filter conversations based on search query"""
-        if not search_query:
-            return conversation_names
-        
-        filtered = []
-        search_lower = search_query.lower()
-        
-        for conv_name in conversation_names:
-            # Search in conversation name
-            if search_lower in conv_name.lower():
-                filtered.append(conv_name)
-                continue
-            
-            # TODO: Could also search in conversation content
-            # This would require accessing conversation messages
-        
-        return filtered
+    # Removed _filter_conversations method - no search functionality needed
     
     def _render_system_status(self):
         """Render system status indicators"""

@@ -24,12 +24,9 @@ class ConversationManager:
         self.memory_repository = get_memory_repository()
     
     def _get_current_user_id(self) -> Optional[str]:
-        """Get current user ID from session state, returns None for guests/unauthenticated"""
-        if "user_session" in st.session_state:
-            user_session = st.session_state.user_session
-            if isinstance(user_session, dict):
-                return user_session.get("user_id")
-        return None
+        """Get current user ID from simple user session"""
+        from services.simple_user_session import get_current_user_id
+        return get_current_user_id()
     
     def _get_user_conversations_key(self, user_id: Optional[str] = None) -> str:
         """Get the session state key for user's conversations"""
@@ -371,53 +368,8 @@ class ConversationManager:
             self.logger.error(f"Error deleting conversation: {e}")
             return False
     
-    def clear_conversation_memory(self, conversation_name: str = None):
-        """Clear memory for a conversation"""
-        try:
-            if conversation_name is None:
-                conversation_name = self.get_current_conversation()
-            
-            user_id = self._get_current_user_id()
-            conversations_key = self._get_user_conversations_key(user_id)
-            manager_key = self._get_user_langgraph_manager_key(user_id)
-            
-            conversations = st.session_state.get(conversations_key, {})
-            if conversation_name not in conversations:
-                return
-            
-            # Clear messages
-            conversations[conversation_name]["messages"] = []
-            conversations[conversation_name]["welcome_shown"] = False
-            conversations[conversation_name]["updated_at"] = datetime.now().isoformat()
-            st.session_state[conversations_key] = conversations
-            
-            # Clear from memory repository
-            manager = st.session_state.get(manager_key)
-            if manager and hasattr(manager, 'clear_history'):
-                thread_id = conversations[conversation_name]["thread_id"]
-                manager.clear_history(thread_id)
-            
-            self.logger.info(f"Cleared memory for conversation: {conversation_name}")
-            
-        except Exception as e:
-            self.logger.error(f"Error clearing conversation memory: {e}")
-    
-    def update_conversation_title(self, conversation_name: str, new_title: str):
-        """Update conversation title"""
-        try:
-            user_id = self._get_current_user_id()
-            conversations_key = self._get_user_conversations_key(user_id)
-            
-            conversations = st.session_state.get(conversations_key, {})
-            if conversation_name in conversations:
-                conversations[conversation_name]["title"] = new_title
-                conversations[conversation_name]["updated_at"] = datetime.now().isoformat()
-                st.session_state[conversations_key] = conversations
-                
-                self.logger.info(f"Updated title for {conversation_name}: {new_title}")
-            
-        except Exception as e:
-            self.logger.error(f"Error updating conversation title: {e}")
+    # Removed clear_conversation_memory and update_conversation_title methods
+    # These were only used by the removed Actions UI component
     
     def reset_session_state(self):
         """Reset session state (clear all conversations)"""
@@ -531,19 +483,10 @@ def process_templated_prompt(prompt: str):
     manager.process_templated_prompt(prompt)
 
 
-def clear_conversation_memory(conversation_name: str = None):
-    """Clear conversation memory (legacy compatibility)"""
-    manager = get_conversation_manager()
-    manager.clear_conversation_memory(conversation_name)
-
+# Removed clear_conversation_memory and update_conversation_title global functions
+# These were only used by the removed Actions UI component
 
 def reset_session_state():
     """Reset session state (legacy compatibility)"""
     manager = get_conversation_manager()
     manager.reset_session_state()
-
-
-def update_conversation_title(conversation_name: str, new_title: str):
-    """Update conversation title (legacy compatibility)"""
-    manager = get_conversation_manager()
-    manager.update_conversation_title(conversation_name, new_title)

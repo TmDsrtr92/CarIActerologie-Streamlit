@@ -24,7 +24,7 @@ class DevelopmentConfig(AppConfig):
         self.langgraph = base_config.langgraph
         self.streaming = base_config.streaming
         self.ui = base_config.ui
-        self.auth = base_config.auth
+        # Removed auth config - using simple user session
         self.logging = base_config.logging
         
         # Development-specific overrides
@@ -56,9 +56,7 @@ Pour commencer, vous pouvez choisir une des suggestions ci-dessous ou me poser d
         self.langgraph.enable_conversation_branching = True
         self.langgraph.enable_semantic_search = True
         
-        # More permissive settings for testing
-        self.auth.allow_guest_mode = True
-        self.auth.require_email_verification = False
+        # Removed auth settings - using simple user session
         
         # Development vector store settings
         self.vectorstore.search_kwargs = {"k": 8}  # Retrieve more chunks for testing

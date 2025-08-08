@@ -196,21 +196,6 @@ Pour commencer, vous pouvez choisir une des suggestions ci-dessous ou me poser d
 
 
 @dataclass
-class AuthConfig:
-    """Authentication and user management configuration"""
-    enabled: bool = True
-    allow_guest_mode: bool = True
-    require_email_verification: bool = False
-    allow_self_registration: bool = True
-    session_timeout_hours: int = 24
-    max_login_attempts: int = 5
-    lockout_duration_minutes: int = 15
-    password_min_length: int = 8
-    password_require_special: bool = False
-    user_db_path: str = "infrastructure/database/auth/users.db"
-
-
-@dataclass
 class LoggingConfig:
     """Logging and monitoring configuration"""
     level: str = "INFO"
@@ -230,7 +215,7 @@ class AppConfig:
     langgraph: LangGraphConfig = field(default_factory=LangGraphConfig)
     streaming: StreamingConfig = field(default_factory=StreamingConfig)
     ui: UIConfig = field(default_factory=UIConfig)
-    auth: AuthConfig = field(default_factory=AuthConfig)
+    # Removed AuthConfig - using simple session-based user tracking
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
     # Environment settings

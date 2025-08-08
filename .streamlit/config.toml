@@ -6,11 +6,6 @@ headless = true
 port = 8501
 maxUploadSize = 200
 
-[theme]
-primaryColor = "#2E86AB"
-backgroundColor = "#F8F9FA"
-secondaryBackgroundColor = "#E9ECEF"
-textColor = "#212529"
 
 [logger]
 level = "info"
